@@ -1,0 +1,49 @@
+{
+  "name": "costing-quotation-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drawing-based Costing & Quotation system for Pacific Surfaces — drawing summary import, unit conversion, internal costing, customer charges, slab calculation, project summary and customer PDF quote.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:push": "prisma db push",
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma db push --force-reset && tsx --env-file=.env prisma/seed.ts",
+    "setup": "npm install && prisma db push && tsx --env-file=.env prisma/seed.ts"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "5.9.1",
+    "@prisma/adapter-pg": "6.19.3",
+    "@prisma/client": "6.19.3",
+    "@react-pdf/renderer": "4.3.0",
+    "exceljs": "4.4.0",
+    "lucide-react": "1.52.0",
+    "next": "15.5.27",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-hook-form": "7.89.0",
+    "server-only": "^0.0.1",
+    "sonner": "2.0.8",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.2.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.18.8",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "eslint": "9.18.0",
+    "eslint-config-next": "15.5.27",
+    "prisma": "6.19.3",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.19.2",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

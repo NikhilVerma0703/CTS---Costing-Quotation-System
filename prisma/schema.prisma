@@ -1,0 +1,454 @@
+// Pacific Surfaces — Costing & Quotation System
+//
+// Only INPUTS are stored. Every derived number (LF, sqft, costs, totals, slab
+// area, margin, $/sqft) is produced by the calculation engine
+// (src/lib/engine/calculate.ts) on every read, so nothing can go stale.
+//
+//   Project ─┬─ SlabSpec (1:1)            slab size + material basis
+//            ├─ PackingConfig (1:1)       container cost (Rs), count, exchange rate
+//            ├─ SlabInput (1:1)           optimizer slab count
+//            │    ├─ SlabAdjustment       ± slabs with reason
+//            │    └─ SlabDriver           driver-piece analysis rows
+//            ├─ ProjectCostInput ─► CostItem   My Cost / Customer Charge
+//            ├─ DrawingGroup              plan groups (normalized)
+//            ├─ DrawingPiece ─► DrawingGroup, ImportBatch
+//            ├─ ImportBatch               each drawing-sheet import
+//            ├─ ProjectNote               internal / customer-visible notes
+//            └─ QuoteRevision             frozen input + result snapshot
+//   UnitConversionRule (global) · CostItem (global) · AuditLog (global)
+
+generator client {
+  provider   = "prisma-client-js"
+  // Rust-free client: queries run through the pg driver adapter (src/lib/db.ts).
+  // Same code works locally and on Neon, and no native query engine ships.
+  engineType = "client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Neon: DIRECT_URL is the non-pooled connection string. Locally it is the same.
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  DRAFT
+  QUOTED
+  WON
+  LOST
+  ARCHIVED
+}
+
+/// Length units a drawing dimension can be recorded in.
+enum LengthUnit {
+  IN
+  MM
+  CM
+  FT
+  M
+}
+
+/// What a cost rate multiplies, per piece.
+enum CostDriver {
+  PIECE_SQFT // Sqft/Pc
+  CUTTING_LF // Cutting LF
+  DEP_LF // DE&P (edge polish) LF
+  SINK_CUTS
+  FAUCET_HOLES
+  R_CORNERS
+  JOINTS
+}
+
+/// Where the My Cost rate comes from.
+enum MyCostMode {
+  MANUAL
+  PACKING_PER_SQFT // = packing USD ÷ total project sqft (Variables!B28)
+}
+
+/// Where the Customer Charge rate comes from.
+enum CustomerChargeMode {
+  MANUAL
+  SAME_AS_MY_COST // e.g. material: no markup (Variables!D12 = C12)
+}
+
+/// How the linear feet of an edge operation are measured on a piece.
+enum EdgeRule {
+  FULL_PERIMETER // 2(L+W)
+  ONE_LENGTH_ONE_WIDTH // L+W
+  NONE // 0
+}
+
+enum PieceSource {
+  IMPORT
+  MANUAL
+}
+
+enum ImportStatus {
+  IMPORTED
+  FAILED
+}
+
+enum ImportMode {
+  APPEND
+  REPLACE
+}
+
+enum NoteVisibility {
+  INTERNAL
+  CUSTOMER
+}
+
+enum RevisionStatus {
+  ISSUED
+  SUPERSEDED
+}
+
+enum MeasurementType {
+  LENGTH
+  AREA
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Project {
+  id           String        @id @default(cuid())
+  code         String        @unique // e.g. "1624" or "LEN-BP"
+  name         String
+  customerName String?
+  siteAddress  String?
+  contactName  String?
+  contactEmail String?
+  currency     String        @default("USD")
+  status       ProjectStatus @default(DRAFT)
+  /// Quote validity shown on the customer PDF.
+  validityDays Int           @default(30)
+  /// Free-text version label kept with the costing, e.g. "Ver 5".
+  versionLabel String?
+  description  String?
+
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  slabSpec      SlabSpec?
+  packing       PackingConfig?
+  slabInput     SlabInput?
+  costInputs    ProjectCostInput[]
+  groups        DrawingGroup[]
+  pieces        DrawingPiece[]
+  imports       ImportBatch[]
+  notes         ProjectNote[]
+  revisions     QuoteRevision[]
+
+  @@index([status])
+  @@index([name])
+  @@index([deletedAt])
+}
+
+/// Stock slab size and material basis (Variables!B5:B8).
+model SlabSpec {
+  id            String     @id @default(cuid())
+  projectId     String     @unique
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  width         Decimal    @db.Decimal(12, 4)
+  depth         Decimal    @db.Decimal(12, 4)
+  unit          LengthUnit @default(IN)
+  materialBasis String? // "1.5cm - Color TBD"
+  updatedBy     String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+/// Packing calculation (Variables!B23:B28). Total sqft comes from the drawings.
+model PackingConfig {
+  id                   String   @id @default(cuid())
+  projectId            String   @unique
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  containerLabel       String   @default("40ft container")
+  /// Cost per container in the local currency (Rs).
+  containerCostLocal   Decimal  @db.Decimal(14, 2)
+  containerCount       Decimal  @db.Decimal(10, 2)
+  localCurrency        String   @default("INR")
+  /// Local currency per 1 unit of the quote currency (Rs per USD).
+  exchangeRate         Decimal  @db.Decimal(14, 6)
+  updatedBy            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slab calculation inputs (sheet 6). The slab count is an input from the
+// external nesting optimizer — the workbook does not compute it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SlabInput {
+  id             String           @id @default(cuid())
+  projectId      String           @unique
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  optimizerSlabs Int
+  /// e.g. "CutList Optimizer brighton_park_rev_1.pdf (10/7/2026, 46 pages)"
+  sourceNote     String?
+  kerfIn         Decimal?         @db.Decimal(8, 4)
+  updatedBy      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  adjustments    SlabAdjustment[]
+  drivers        SlabDriver[]
+}
+
+model SlabAdjustment {
+  id          String    @id @default(cuid())
+  slabInputId String
+  slabInput   SlabInput @relation(fields: [slabInputId], references: [id], onDelete: Cascade)
+  slabs       Int // negative frees slabs
+  reason      String
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([slabInputId])
+}
+
+/// "Slab driver" analysis rows (Slab Calculation A14:B20).
+model SlabDriver {
+  id                String    @id @default(cuid())
+  slabInputId       String
+  slabInput         SlabInput @relation(fields: [slabInputId], references: [id], onDelete: Cascade)
+  label             String
+  pieces            Int
+  piecesPerSlab     Decimal   @db.Decimal(8, 2)
+  dedicatedSlabs    Int
+  /// Waste per dedicated slab, in square inches (2,114 on the reference sheet).
+  wastePerSlabSqIn  Decimal   @db.Decimal(12, 2)
+  note              String?
+  sortOrder         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  @@index([slabInputId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cost inputs
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Catalog of chargeable operations — shared by all projects.
+model CostItem {
+  id         String     @id @default(cuid())
+  code       String     @unique // MATERIAL, CUTTING, DEP, SINK, FAUCET, RCORNER, JOINT, PACKING
+  name       String
+  unitLabel  String // "per sqft", "per linear ft", "per cutout" …
+  driver     CostDriver
+  /// Material is priced on slab basis in the Project Summary, so it is taken
+  /// out of "fabrication" there.
+  isMaterial Boolean    @default(false)
+  sortOrder  Int        @default(0)
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  projectInputs ProjectCostInput[]
+}
+
+/// One row of the Cost Inputs table for one project.
+model ProjectCostInput {
+  id                 String             @id @default(cuid())
+  projectId          String
+  project            Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costItemId         String
+  costItem           CostItem           @relation(fields: [costItemId], references: [id])
+  /// Optional per-project display name, e.g. "1.5cm Material (color TBD)".
+  label              String?
+  myCostMode         MyCostMode         @default(MANUAL)
+  myCost             Decimal?           @db.Decimal(14, 4)
+  customerChargeMode CustomerChargeMode @default(MANUAL)
+  customerCharge     Decimal?           @db.Decimal(14, 4)
+  note               String?
+  updatedBy          String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([projectId, costItemId])
+  @@index([costItemId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unit conversion (global)
+// value_out = value_in × multiplier ÷ divisor   (in→ft: ×1 ÷12; sq in→sqft: ×1 ÷144)
+// Kept as multiplier/divisor so results match the workbook's "/12" and "/144"
+// to the last digit.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UnitConversionRule {
+  id              String          @id @default(cuid())
+  measurementType MeasurementType
+  fromUnit        String // "in", "mm", "sq in"
+  toUnit          String // "ft", "sqft"
+  multiplier      Decimal         @default(1) @db.Decimal(18, 8)
+  divisor         Decimal         @default(1) @db.Decimal(18, 8)
+  description     String?
+  /// Rules the engine needs (in/mm/cm/ft/m → ft and their area versions).
+  isSystem        Boolean         @default(false)
+  isActive        Boolean         @default(true)
+  updatedBy       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([measurementType, fromUnit, toUnit])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drawing summary
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DrawingGroup {
+  id        String         @id @default(cuid())
+  projectId String
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  pieces    DrawingPiece[]
+
+  @@unique([projectId, name])
+}
+
+model ImportBatch {
+  id           String       @id @default(cuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileName     String
+  sheetName    String?
+  mode         ImportMode
+  status       ImportStatus
+  rowsRead     Int
+  rowsImported Int
+  /// Validation messages and column mapping used.
+  report       Json?
+  createdBy    String?
+  createdAt    DateTime     @default(now())
+  pieces       DrawingPiece[]
+
+  @@index([projectId, createdAt])
+}
+
+/// One row of the Drawing Summary (sheet 2, columns A–O, U). The calculated
+/// columns P–T are NOT stored.
+model DrawingPiece {
+  id            String       @id @default(cuid())
+  projectId     String
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  groupId       String?
+  group         DrawingGroup? @relation(fields: [groupId], references: [id])
+  importBatchId String?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
+  source        PieceSource  @default(MANUAL)
+  sortOrder     Int          @default(0)
+
+  dwgNo         String // "1", "4", "10"
+  area          String? // Kitchen / MB Vanity / B2 Vanity
+  pieceNo       String // "1", "1A"
+  description   String
+  length        Decimal      @db.Decimal(12, 4)
+  width         Decimal      @db.Decimal(12, 4)
+  dimUnit       LengthUnit   @default(IN)
+  thickness     String?
+  color         String?
+  sinkModel     String?
+  sinkCuts      Int          @default(0)
+  faucetHoles   Int          @default(0)
+  rCorners      Int          @default(0)
+  joints        Int          @default(0)
+  unitsQty      Int
+  cuttingRule   EdgeRule     @default(FULL_PERIMETER)
+  depRule       EdgeRule     @default(ONE_LENGTH_ONE_WIDTH)
+  notes         String?
+
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  @@index([projectId, deletedAt, sortOrder])
+  @@index([projectId, dwgNo])
+  @@index([groupId])
+  @@index([area])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notes & quote revisions
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProjectNote {
+  id         String         @id @default(cuid())
+  projectId  String
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  visibility NoteVisibility @default(INTERNAL)
+  text       String
+  sortOrder  Int            @default(0)
+  createdBy  String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
+
+  @@index([projectId, visibility])
+}
+
+/// Frozen copy of a quote at the moment it was issued, so the PDF of an older
+/// revision can be reproduced exactly after rates change.
+model QuoteRevision {
+  id                String         @id @default(cuid())
+  projectId         String
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revisionNo        Int
+  quoteNumber       String // e.g. "Q-LEN-BP-R1"
+  status            RevisionStatus @default(ISSUED)
+  issuedAt          DateTime       @default(now())
+  issuedBy          String?
+  remarks           String?
+  totalQuote        Decimal        @db.Decimal(16, 2)
+  totalInternalCost Decimal        @db.Decimal(16, 2)
+  totalSqft         Decimal        @db.Decimal(16, 4)
+  /// Full engine input (all rates, pieces, rules) at issue time.
+  inputSnapshot     Json
+  /// Full engine result at issue time.
+  resultSnapshot    Json
+  /// Project header + customer notes used on the PDF.
+  quoteSnapshot     Json
+  createdAt         DateTime       @default(now())
+
+  @@unique([projectId, revisionNo])
+  @@unique([quoteNumber])
+  @@index([projectId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  projectId  String? // set when the change belongs to a project
+  entityType String
+  entityId   String
+  action     String // CREATE | UPDATE | DELETE | IMPORT | ISSUE …
+  summary    String?
+  before     Json?
+  after      Json?
+  userName   String?
+  createdAt  DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([entityType, entityId])
+}

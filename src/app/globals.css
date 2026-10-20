@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* Same palette as the other Pacific Surfaces ERPs, so this module feels like
+   part of one system. */
+@theme {
+  /* Pacific ERP palette (Robo / Chromia): brand teal, Pacific dark, cool grey page. */
+  --color-ink: #0f1720;
+  --color-ink-2: #475467;
+  --color-ink-3: #98a2b3;
+  --color-line: #e4e7ec;
+  --color-line-2: #d0d5dd;
+  --color-shell: #eef1f4;
+  --color-brand: #0f4c5c;
+  --color-brand-2: #1f6d80;
+  --color-pacific-dark: #112732;
+  --color-accent: #0f4c5c;
+  --color-accent-bg: #eef5f7;
+
+  --color-ok-bg: #e7f6ec;
+  --color-ok-fg: #1a7f43;
+  --color-warn-bg: #fff4d6;
+  --color-warn-fg: #946200;
+  --color-bad-bg: #fde7e7;
+  --color-bad-fg: #b02a2a;
+  --color-info-bg: #eef5f7;
+  --color-info-fg: #0f4c5c;
+  --color-mute-bg: #f2f4f7;
+  --color-mute-fg: #667085;
+
+  /* Internal (My Cost) vs customer-facing values are colour-coded everywhere. */
+  --color-internal: #7c3aed;
+  --color-internal-bg: #f3effe;
+  --color-customer: #047857;
+  --color-customer-bg: #e8f6f0;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  /* 16px root like Pacific ERP, so spacing (rem) matches; body text stays 14px. */
+  html {
+    font-size: 16px;
+  }
+  body {
+    background:
+      radial-gradient(1200px 600px at 100% -10%, rgba(15, 76, 92, 0.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(15, 76, 92, 0.05), transparent 55%),
+      var(--color-shell);
+    background-attachment: fixed;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  table {
+    border-collapse: collapse;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-2);
+    outline-offset: 2px;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+  dialog::backdrop {
+    background: rgb(15 23 42 / 0.45);
+  }
+}
+
+@utility card {
+  @apply rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)];
+}
+@utility label {
+  @apply mb-1 block text-[13px] font-semibold text-ink-2;
+}
+@utility input {
+  @apply block min-h-10 w-full rounded-lg border border-line-2 bg-white px-3 py-2 text-[14px] text-ink
+    placeholder:text-ink-3 focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 focus:outline-none
+    disabled:cursor-not-allowed disabled:bg-mute-bg disabled:text-ink-3;
+}
+@utility input-sm {
+  @apply min-h-8 px-2 py-1 text-[13px];
+}
+@utility input-error {
+  @apply border-bad-fg focus:border-bad-fg focus:ring-bad-fg/20;
+}
+@utility btn {
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold
+    transition-colors select-none disabled:cursor-not-allowed disabled:opacity-60;
+}
+@utility btn-primary {
+  @apply btn bg-brand text-white hover:bg-brand-2;
+}
+@utility btn-secondary {
+  @apply btn border border-line-2 bg-white text-brand hover:bg-info-bg;
+}
+@utility btn-ghost {
+  @apply btn text-ink-2 hover:bg-mute-bg;
+}
+@utility btn-danger {
+  @apply btn bg-bad-fg text-white hover:bg-[#8f2020];
+}
+@utility btn-sm {
+  @apply min-h-8 px-3 py-1 text-[13px];
+}
+@utility icon-btn {
+  @apply inline-flex size-8 items-center justify-center rounded-lg text-ink-2 hover:bg-mute-bg
+    disabled:opacity-50;
+}
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
+}
+@utility th {
+  @apply border-b border-line bg-mute-bg px-3 py-2 text-left text-[11px] font-bold tracking-wide whitespace-nowrap text-ink-2 uppercase;
+}
+@utility td {
+  @apply border-b border-line px-3 py-2 align-top;
+}
+@utility num {
+  @apply text-right tabular-nums whitespace-nowrap;
+}
+
+/* Sidebar hidden before hydration (boot script in app/layout.tsx). */
+@media (min-width: 768px) {
+  html[data-sidebar-hidden] .cts-rail {
+    width: 0;
+    border-color: transparent;
+  }
+}

@@ -1,14 +1,19 @@
 import Link from "next/link";
-import { AlertTriangle, XCircle } from "lucide-react";
+import { AlertTriangle, SearchCheck, XCircle } from "lucide-react";
 import type { Issue } from "@/lib/engine/types";
 import { sectionHref } from "@/modules/registry";
 
-/** Calculation problems: errors stop the quote from being issued; warnings don't. */
+/**
+ * Calculation problems: errors stop the quote from being issued; warnings
+ * don't. Data checks (values to verify) are summarised in one line that
+ * links to the full list on Drawing & Variables.
+ */
 export function IssuesBanner({ issues, projectId, only }: { issues: Issue[]; projectId: string; only?: "error" | "warning" }) {
   const list = only ? issues.filter((i) => i.severity === only) : issues;
   if (list.length === 0) return null;
   const errors = list.filter((i) => i.severity === "error");
-  const warnings = list.filter((i) => i.severity === "warning");
+  const warnings = list.filter((i) => i.severity === "warning" && !i.check);
+  const checks = list.filter((i) => i.check);
   return (
     <div className="mb-5 space-y-2">
       {errors.length > 0 && (
@@ -43,6 +48,14 @@ export function IssuesBanner({ issues, projectId, only }: { issues: Issue[]; pro
             ))}
           </ul>
         </div>
+      )}
+      {checks.length > 0 && (
+        <Link
+          href={`${sectionHref(projectId, "import-drawing")}#checks`}
+          className="flex items-center gap-2 rounded-xl border border-warn-fg/25 bg-warn-bg px-4 py-2.5 text-sm font-semibold text-warn-fg hover:underline"
+        >
+          <SearchCheck className="size-4" /> {checks.length} data value{checks.length === 1 ? "" : "s"} to verify against the drawings
+        </Link>
       )}
     </div>
   );

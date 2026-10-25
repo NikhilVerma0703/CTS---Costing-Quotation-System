@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { num } from "@/lib/utils";
 import { calculateProject } from "./calculate";
-import type { EngineInput, EngineResult } from "./types";
+import type { EngineInput, EngineResult, PieceInput } from "./types";
 
 /** The project row with everything the pages show in headers. */
 export const getProject = cache(async (projectId: string) => {
@@ -18,7 +18,7 @@ export const getProject = cache(async (projectId: string) => {
 
 /** Read the current inputs of a project into the engine's plain shape. */
 export async function loadEngineInput(projectId: string): Promise<EngineInput> {
-  const [project, rules, costInputs, pieces, slab] = await Promise.all([
+  const [project, rules, costInputs, pieces, slab, variables] = await Promise.all([
     prisma.project.findFirstOrThrow({
       where: { id: projectId, deletedAt: null },
       include: { slabSpec: true, packing: true },
@@ -40,7 +40,9 @@ export async function loadEngineInput(projectId: string): Promise<EngineInput> {
         drivers: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
     }),
+    prisma.variablesSheet.findUnique({ where: { projectId } }),
   ]);
+  const checks = (variables?.values as { checks?: { totalSqft?: number | null; packingPerSqft?: number | null } } | null)?.checks;
 
   return {
     currency: project.currency,
@@ -116,7 +118,11 @@ export async function loadEngineInput(projectId: string): Promise<EngineInput> {
       cuttingRule: p.cuttingRule,
       depRule: p.depRule,
       notes: p.notes,
+      sheetValues: (p.sheetValues as PieceInput["sheetValues"]) ?? null,
     })),
+    variablesSheet: variables
+      ? { fileName: variables.fileName, totalSqft: checks?.totalSqft ?? null, packingPerSqft: checks?.packingPerSqft ?? null }
+      : null,
   };
 }
 

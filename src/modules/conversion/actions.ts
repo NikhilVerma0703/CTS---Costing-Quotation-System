@@ -60,37 +60,3 @@ export async function saveRule(ruleId: string | null, values: RuleInput): Promis
     return unexpected(e);
   }
 }
-
-const edgeSchema = z.object({
-  cuttingRule: z.enum(["FULL_PERIMETER", "ONE_LENGTH_ONE_WIDTH", "NONE"]),
-  depRule: z.enum(["FULL_PERIMETER", "ONE_LENGTH_ONE_WIDTH", "NONE"]),
-});
-
-/** Change the Cutting / DE&P edge rule of one piece. */
-export async function setPieceEdgeRules(
-  projectId: string,
-  pieceId: string,
-  values: z.input<typeof edgeSchema>,
-): Promise<ActionResult> {
-  const parsed = edgeSchema.safeParse(values);
-  if (!parsed.success) return fail("Invalid rule.");
-  try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.drawingPiece.findFirstOrThrow({ where: { id: pieceId, projectId, deletedAt: null } });
-      await tx.drawingPiece.update({ where: { id: pieceId }, data: { ...parsed.data, updatedBy: currentUserName() } });
-      await audit(tx, {
-        projectId,
-        entityType: "DrawingPiece",
-        entityId: pieceId,
-        action: "UPDATE",
-        summary: `Dwg ${before.dwgNo} piece ${before.pieceNo}: Cutting ${before.cuttingRule} → ${parsed.data.cuttingRule}, DE&P ${before.depRule} → ${parsed.data.depRule}`,
-        before: { cuttingRule: before.cuttingRule, depRule: before.depRule },
-        after: parsed.data,
-      });
-    });
-    revalidatePath(`/projects/${projectId}`, "layout");
-    return ok(undefined, "Edge rule updated");
-  } catch (e) {
-    return unexpected(e);
-  }
-}

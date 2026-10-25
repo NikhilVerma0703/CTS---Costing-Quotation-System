@@ -41,22 +41,26 @@ export function PieceForm({
   pieceId,
   initial,
   suggestions,
+  defaults,
   onDone,
 }: {
   projectId: string;
   pieceId?: string;
   initial?: PieceFormInput;
   suggestions: { groups: string[]; areas: string[]; thicknesses: string[]; colors: string[]; sinkModels: string[] };
+  /** Edge rules from the stored standard formulas, for new pieces. */
+  defaults?: { cuttingRule: PieceFormInput["cuttingRule"]; depRule: PieceFormInput["depRule"] };
   onDone?: () => void;
 }) {
   const [pending, start] = useTransition();
+  const blankPiece: PieceFormInput = { ...EMPTY_PIECE, ...(defaults ? { cuttingRule: defaults.cuttingRule, depRule: defaults.depRule } : {}) };
   const {
     register,
     handleSubmit,
     reset,
     setError,
     formState: { errors },
-  } = useForm<PieceFormInput>({ resolver: zodResolver(pieceSchema), defaultValues: initial ?? EMPTY_PIECE });
+  } = useForm<PieceFormInput>({ resolver: zodResolver(pieceSchema), defaultValues: initial ?? blankPiece });
 
   const onSubmit = (values: PieceFormInput) =>
     start(async () => {
@@ -69,7 +73,7 @@ export function PieceForm({
       toast.success(res.message);
       if (!pieceId) {
         // Keep the drawing context for the next piece of the same drawing.
-        reset({ ...EMPTY_PIECE, dwgNo: values.dwgNo, group: values.group, area: values.area, dimUnit: values.dimUnit, thickness: values.thickness, color: values.color });
+        reset({ ...blankPiece, dwgNo: values.dwgNo, group: values.group, area: values.area, dimUnit: values.dimUnit, thickness: values.thickness, color: values.color });
       }
       onDone?.();
     });

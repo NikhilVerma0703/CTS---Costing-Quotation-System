@@ -11,21 +11,49 @@ import { IssuesBanner } from "@/components/ui/IssuesBanner";
 import { Formula } from "@/components/ui/Formula";
 import { CostInputsTable, type CostInputRowView } from "@/components/cost-inputs/CostInputsTable";
 import { PackingForm, SlabSpecForm } from "@/components/cost-inputs/SettingsForms";
+import { ExportButtons } from "@/components/ui/ExportButtons";
 
 export const metadata: Metadata = { title: "Cost Inputs" };
 
 export default async function CostInputsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const [inputs, project, history, { result }] = await Promise.all([
+  const [inputs, project, history, otherInputs, { result }] = await Promise.all([
     prisma.projectCostInput.findMany({ where: { projectId }, include: { costItem: true }, orderBy: { costItem: { sortOrder: "asc" } } }),
     prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { slabSpec: true, packing: true } }),
     prisma.auditLog.findMany({
-      where: { projectId, entityType: { in: ["ProjectCostInput", "SlabSpec", "PackingConfig"] } },
+      where: { projectId, entityType: { in: ["ProjectCostInput", "SlabSpec", "PackingConfig", "VariablesSheet"] } },
       orderBy: { createdAt: "desc" },
       take: 15,
     }),
+    prisma.projectCostInput.findMany({
+      where: { projectId: { not: projectId }, project: { deletedAt: null } },
+      include: { costItem: true, project: { select: { code: true } } },
+    }),
     getProjectCalculation(projectId),
   ]);
+
+  // Previous records: the same item's rates on other projects, to flag unusual values.
+  const compare = result.rates.map((r) => {
+    const peers = otherInputs.filter((o) => o.costItem.code === r.code);
+    const range = (vals: (number | null)[]) => {
+      const v = vals.filter((x): x is number => x !== null);
+      return v.length ? { min: Math.min(...v), max: Math.max(...v), n: v.length } : null;
+    };
+    const my = range(peers.filter((p) => p.myCostMode === "MANUAL").map((p) => num(p.myCost)));
+    const cu = range(peers.filter((p) => p.customerChargeMode === "MANUAL").map((p) => num(p.customerCharge)));
+    const outside = (v: number | null, rg: { min: number; max: number } | null) =>
+      v !== null && rg !== null && (v < rg.min * 0.75 || v > rg.max * 1.25) && !(rg.max === 0 && v === 0);
+    return {
+      code: r.code,
+      name: r.name,
+      my: r.myCostMode === "MANUAL" ? r.myCost : null,
+      cu: r.customerChargeMode === "MANUAL" ? r.customerCharge : null,
+      myRange: my,
+      cuRange: cu,
+      flag: outside(r.myCostMode === "MANUAL" ? r.myCost : null, my) || outside(r.customerChargeMode === "MANUAL" ? r.customerCharge : null, cu),
+    };
+  });
+  const comparable = compare.some((c) => c.myRange || c.cuRange);
 
   const rows: CostInputRowView[] = inputs.map((c) => {
     const resolved = result.rates.find((r) => r.code === c.costItem.code);
@@ -54,11 +82,7 @@ export default async function CostInputsPage({ params }: { params: Promise<{ pro
 
   return (
     <>
-      <PageHeader
-        side="internal"
-        title="Cost Inputs"
-        description="The rate card. Change any My Cost or Customer Charge (for example after a negotiation) and every costing page, summary and the customer PDF use the new value straight away — nothing else needs updating."
-      />
+      <PageHeader side="internal" title="Cost Inputs" actions={<ExportButtons scope="cost-inputs" projectId={projectId} />} />
       <IssuesBanner issues={result.issues.filter((i) => i.fixAt === "cost-inputs")} projectId={projectId} />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -68,7 +92,7 @@ export default async function CostInputsPage({ params }: { params: Promise<{ pro
         <StatTile label="Customer rate per sqft" value={rate(s.customerPerSqft)} hint={`My Cost ${rate(s.myCostPerSqft)}/sqft`} />
       </div>
 
-      <Section title="Cost inputs" description="Unit · Cost Item · My Cost · Customer Charges. Material and Packing can follow other values automatically, as in the Variables sheet.">
+      <Section title="Rates">
         <CostInputsTable projectId={projectId} rows={rows} />
       </Section>
 
@@ -107,13 +131,40 @@ export default async function CostInputsPage({ params }: { params: Promise<{ pro
               exchangeRate: num(project.packing?.exchangeRate) ?? "",
             }}
           />
-          <p className="mt-2 text-xs text-ink-3">
-            Packing per sqft is spread over the total piece sqft from the drawings, so it changes whenever drawing quantities change.
-          </p>
+
         </Section>
       </div>
 
-      <Section title="Change history" description="Every rate, slab-size and packing change, newest first." bodyClassName="p-0">
+      {comparable && (
+        <Section title="Compared with other projects" bodyClassName="p-0 overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr>
+                <th className="th">Cost item</th>
+                <th className="th num">My Cost</th>
+                <th className="th num">Other projects</th>
+                <th className="th num">Customer</th>
+                <th className="th num">Other projects</th>
+                <th className="th" />
+              </tr>
+            </thead>
+            <tbody>
+              {compare.map((c) => (
+                <tr key={c.code} className={c.flag ? "bg-warn-bg/50" : ""}>
+                  <td className="td">{c.name}</td>
+                  <td className="td num">{c.my === null ? "—" : rate(c.my)}</td>
+                  <td className="td num text-ink-2">{c.myRange ? `${rate(c.myRange.min)} – ${rate(c.myRange.max)}` : "—"}</td>
+                  <td className="td num">{c.cu === null ? "—" : rate(c.cu)}</td>
+                  <td className="td num text-ink-2">{c.cuRange ? `${rate(c.cuRange.min)} – ${rate(c.cuRange.max)}` : "—"}</td>
+                  <td className="td text-xs font-semibold text-warn-fg">{c.flag ? "Outside the usual range — verify" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
+
+      <Section title="Change history" bodyClassName="p-0">
         {history.length === 0 ? (
           <p className="px-4 py-6 text-sm text-ink-3">No changes yet.</p>
         ) : (

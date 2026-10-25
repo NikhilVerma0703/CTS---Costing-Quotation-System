@@ -9,6 +9,7 @@ import { StatTile } from "@/components/ui/StatTile";
 import { IssuesBanner } from "@/components/ui/IssuesBanner";
 import { Formula } from "@/components/ui/Formula";
 import { AddDriverButton, AdjustmentsEditor, DriverActions, SlabBaseForm } from "@/components/slab/SlabInputs";
+import { ExportButtons } from "@/components/ui/ExportButtons";
 
 export const metadata: Metadata = { title: "Slab Calculation" };
 
@@ -54,11 +55,7 @@ export default async function SlabCalculationPage({ params }: { params: Promise<
 
   return (
     <>
-      <PageHeader
-        side="internal"
-        title="Slab Calculation"
-        description="Slab quantity comes from the nesting optimizer (e.g. CutList Optimizer) — it is entered here, not calculated. The system works out purchased area, waste, utilization and slab-basis material."
-      />
+      <PageHeader side="internal" title="Slab Calculation" actions={<ExportButtons scope="slab-calculation" projectId={projectId} />} />
       <IssuesBanner issues={result.issues.filter((i) => i.fixAt === "slab-calculation" || i.code === "NO_SLAB_SPEC")} projectId={projectId} />
 
       {s && (
@@ -90,7 +87,7 @@ export default async function SlabCalculationPage({ params }: { params: Promise<
         </Section>
 
         <div>
-          <Section title="Optimizer result" description="Re-run the optimizer after any quantity change and enter the new count here.">
+          <Section title="Optimizer result" description="Slab count from the nesting optimizer — re-enter after quantity changes.">
             <SlabBaseForm
               projectId={projectId}
               initial={{
@@ -100,13 +97,13 @@ export default async function SlabCalculationPage({ params }: { params: Promise<
               }}
             />
           </Section>
-          <Section title="Adjustments" description="± slabs on top of the optimizer count, each with its reason (e.g. a quantity change made after the last optimizer run).">
+          <Section title="Adjustments" description="± slabs on top of the optimizer count, with a reason.">
             <AdjustmentsEditor projectId={projectId} rows={(slabInput?.adjustments ?? []).map((a) => ({ id: a.id, slabs: a.slabs, reason: a.reason }))} />
           </Section>
         </div>
       </div>
 
-      <Section title="Slab drivers" description="Which pieces drive the slab count — analysis rows from the optimizer report." bodyClassName="p-0">
+      <Section title="Slab drivers" bodyClassName="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>

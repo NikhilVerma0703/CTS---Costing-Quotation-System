@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, FileSpreadsheet } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getProject } from "@/lib/engine/load";
 import { dec2, money, qty, rate } from "@/lib/engine/format";
@@ -54,15 +54,17 @@ export default async function FinalQuotePage({
       <PageHeader
         side="customer"
         title="Final Quote / PDF"
-        description="The customer document. It is built only from customer-facing values — scope, piece schedule, total and rate per sqft — and never contains My Cost, internal totals or margin."
         actions={
           v.ready ? (
             <>
-              <a className="btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="size-4" /> Open draft PDF
+              <a className="btn-secondary btn-sm" href={pdfUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="size-4" /> Open draft
               </a>
-              <a className="btn-secondary" href={`${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1`}>
-                <Download className="size-4" /> Download draft
+              <a className="btn-secondary btn-sm" href={`/api/export?scope=final-quote&project=${projectId}&format=xlsx`}>
+                <FileSpreadsheet className="size-4" /> Export Excel
+              </a>
+              <a className="btn-secondary btn-sm" href={`${pdfUrl}${pdfUrl.includes("?") ? "&" : "?"}download=1`}>
+                <Download className="size-4" /> Export PDF
               </a>
             </>
           ) : undefined
@@ -85,7 +87,7 @@ export default async function FinalQuotePage({
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <Section title="Preview" description="Exactly what the customer receives." bodyClassName="p-0">
+        <Section title="Preview" bodyClassName="p-0">
           {v.ready ? (
             <iframe title="Quote PDF preview" src={pdfUrl} className="h-[78vh] w-full rounded-b-xl" />
           ) : (
@@ -105,16 +107,13 @@ export default async function FinalQuotePage({
               />
             </div>
             <p className="mt-3 text-xs text-ink-3">
-              Customer notes come from <Link href={sectionHref(projectId, "project-summary")} className="underline">Project Summary → Quote notes</Link>. Company name
-              and contact come from the <code>.env</code> file.
+              Quote notes: <Link href={sectionHref(projectId, "project-summary")} className="underline">Project Summary</Link>.
             </p>
           </Section>
 
           <Section title="Issue">
             <IssueRevision projectId={projectId} ready={v.ready} nextNumber={quoteNumberFor(project.code, nextNo)} options={options} />
-            <p className="mt-3 text-xs text-ink-3">
-              The draft PDF always uses the latest inputs. Issuing gives it a quote number and keeps an exact copy, so it can be downloaded again later unchanged.
-            </p>
+            <p className="mt-3 text-xs text-ink-3">Issuing numbers the quote and keeps an exact copy.</p>
           </Section>
         </div>
       </div>

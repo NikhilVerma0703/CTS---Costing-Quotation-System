@@ -4,38 +4,52 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { audit, currentUserName } from "@/lib/audit";
+import { Prisma } from "@prisma/client";
 import { fail, ok, unexpected, zodFieldErrors, type ActionResult } from "@/lib/action-result";
+import { templateMode } from "@/modules/variables/apply";
 
-const projectSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(1, "Code is required")
-    .max(30)
-    .regex(/^[A-Za-z0-9._-]+$/, "Letters, numbers, dot, dash or underscore only"),
-  name: z.string().trim().min(2, "Name is required").max(200),
+const codeSchema = z
+  .string()
+  .trim()
+  .min(1, "Project code is required")
+  .max(30)
+  .regex(/^[A-Za-z0-9._-]+$/, "Letters, numbers, dot, dash or underscore only");
+
+const extraFieldsSchema = z
+  .array(z.object({ label: z.string().trim().max(60), value: z.string().trim().max(300) }))
+  .max(10)
+  .optional()
+  .transform((rows) => (rows ?? []).filter((r) => r.label || r.value))
+  .superRefine((rows, ctx) =>
+    rows.forEach((r, i) => {
+      if (!r.label) ctx.addIssue({ code: "custom", path: [i, "label"], message: "Name the field" });
+    }),
+  );
+
+/** New project: only what is needed to start. Everything else comes from the uploads. */
+const createSchema = z.object({
+  code: codeSchema,
+  name: z.string().trim().min(2, "Project name is required").max(200),
   customerName: z.string().trim().max(200).optional().or(z.literal("")),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  extraFields: extraFieldsSchema,
+});
+export type CreateProjectValues = z.input<typeof createSchema>;
+
+const projectSchema = createSchema.extend({
   siteAddress: z.string().trim().max(300).optional().or(z.literal("")),
   contactName: z.string().trim().max(120).optional().or(z.literal("")),
   contactEmail: z.string().trim().email("Not a valid email").optional().or(z.literal("")),
   versionLabel: z.string().trim().max(40).optional().or(z.literal("")),
   validityDays: z.coerce.number().int().min(1).max(365),
-  status: z.enum(["DRAFT", "QUOTED", "WON", "LOST", "ARCHIVED"]).optional(),
-  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  /** DRAFT = status follows the data; the others are outcomes a person decides. */
+  status: z.enum(["DRAFT", "WON", "LOST", "ARCHIVED"]).optional(),
 });
 
 const blank = (s: string | undefined) => (s && s.length ? s : null);
 
-/** Cost-input modes of the reference template (rates left empty). */
-const TEMPLATE_MODES: Record<string, { myCostMode: "MANUAL" | "PACKING_PER_SQFT"; customerChargeMode: "MANUAL" | "SAME_AS_MY_COST" }> = {
-  MATERIAL: { myCostMode: "MANUAL", customerChargeMode: "SAME_AS_MY_COST" },
-  PACKING: { myCostMode: "PACKING_PER_SQFT", customerChargeMode: "SAME_AS_MY_COST" },
-};
-
-export async function createProject(
-  values: z.input<typeof projectSchema> & { copyFromProjectId?: string },
-): Promise<ActionResult<{ id: string }>> {
-  const parsed = projectSchema.safeParse(values);
+export async function createProject(values: CreateProjectValues): Promise<ActionResult<{ id: string }>> {
+  const parsed = createSchema.safeParse(values);
   if (!parsed.success) return fail("Please correct the highlighted fields.", zodFieldErrors(parsed.error.issues));
   const d = parsed.data;
   const user = currentUserName();
@@ -43,69 +57,19 @@ export async function createProject(
     if (await prisma.project.findUnique({ where: { code: d.code } })) {
       return fail("Please correct the highlighted fields.", { code: "A project with this code already exists" });
     }
-    const source = values.copyFromProjectId
-      ? await prisma.project.findFirst({
-          where: { id: values.copyFromProjectId, deletedAt: null },
-          include: { slabSpec: true, packing: true, costInputs: true },
-        })
-      : null;
     const items = await prisma.costItem.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
-
     const project = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: {
           code: d.code,
           name: d.name,
           customerName: blank(d.customerName),
-          siteAddress: blank(d.siteAddress),
-          contactName: blank(d.contactName),
-          contactEmail: blank(d.contactEmail),
-          versionLabel: blank(d.versionLabel),
-          validityDays: d.validityDays,
           description: blank(d.description),
+          extraFields: d.extraFields.length ? d.extraFields : undefined,
           createdBy: user,
           updatedBy: user,
-          slabSpec: source?.slabSpec
-            ? {
-                create: {
-                  width: source.slabSpec.width,
-                  depth: source.slabSpec.depth,
-                  unit: source.slabSpec.unit,
-                  materialBasis: source.slabSpec.materialBasis,
-                  updatedBy: user,
-                },
-              }
-            : undefined,
-          packing: source?.packing
-            ? {
-                create: {
-                  containerLabel: source.packing.containerLabel,
-                  containerCostLocal: source.packing.containerCostLocal,
-                  containerCount: source.packing.containerCount,
-                  localCurrency: source.packing.localCurrency,
-                  exchangeRate: source.packing.exchangeRate,
-                  updatedBy: user,
-                },
-              }
-            : undefined,
-          costInputs: {
-            create: items.map((item) => {
-              const from = source?.costInputs.find((c) => c.costItemId === item.id);
-              const tpl = TEMPLATE_MODES[item.code] ?? { myCostMode: "MANUAL", customerChargeMode: "MANUAL" };
-              return from
-                ? {
-                    costItemId: item.id,
-                    label: from.label,
-                    myCostMode: from.myCostMode,
-                    myCost: from.myCost,
-                    customerChargeMode: from.customerChargeMode,
-                    customerCharge: from.customerCharge,
-                    note: from.note,
-                    updatedBy: user,
-                  }
-                : { costItemId: item.id, ...tpl, updatedBy: user };
-            }),
-          },
+          // Empty rate rows; the Variables sheet (uploaded or reused) fills them.
+          costInputs: { create: items.map((item) => ({ costItemId: item.id, ...templateMode(item.code), updatedBy: user })) },
         },
       });
       await audit(tx, {
@@ -113,7 +77,7 @@ export async function createProject(
         entityType: "Project",
         entityId: p.id,
         action: "CREATE",
-        summary: `Created project ${p.code}${source ? ` (cost inputs copied from ${source.code})` : ""}`,
+        summary: `Created project ${p.code}`,
         after: { code: p.code, name: p.name },
       });
       return p;
@@ -125,7 +89,9 @@ export async function createProject(
   }
 }
 
-export async function updateProject(projectId: string, values: z.input<typeof projectSchema>): Promise<ActionResult> {
+export type ProjectValues = z.input<typeof projectSchema>;
+
+export async function updateProject(projectId: string, values: ProjectValues): Promise<ActionResult> {
   const parsed = projectSchema.safeParse(values);
   if (!parsed.success) return fail("Please correct the highlighted fields.", zodFieldErrors(parsed.error.issues));
   const d = parsed.data;
@@ -147,8 +113,10 @@ export async function updateProject(projectId: string, values: z.input<typeof pr
           contactEmail: blank(d.contactEmail),
           versionLabel: blank(d.versionLabel),
           validityDays: d.validityDays,
-          status: d.status ?? before.status,
+          // Issued revisions decide "Quoted"; an outcome set back to automatic keeps QUOTED if one exists.
+          status: d.status ? (d.status === "DRAFT" && before.status === "QUOTED" ? "QUOTED" : d.status) : before.status,
           description: blank(d.description),
+          extraFields: d.extraFields.length ? d.extraFields : Prisma.DbNull,
           updatedBy: currentUserName(),
         },
       });

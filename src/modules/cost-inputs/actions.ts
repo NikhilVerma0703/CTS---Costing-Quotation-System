@@ -8,6 +8,7 @@ import { fail, ok, unexpected, zodFieldErrors, type ActionResult } from "@/lib/a
 import { calculateProject } from "@/lib/engine/calculate";
 import { loadEngineInput } from "@/lib/engine/load";
 import { money } from "@/lib/engine/format";
+import { syncVariablesFromInputs } from "@/modules/variables/apply";
 
 const refresh = (projectId: string) => revalidatePath(`/projects/${projectId}`, "layout");
 
@@ -67,6 +68,7 @@ export async function updateCostInput(projectId: string, inputId: string, values
         before: JSON.parse(JSON.stringify(before)),
         after: JSON.parse(JSON.stringify(data)),
       });
+      await syncVariablesFromInputs(tx, projectId, currentUserName());
     });
     refresh(projectId);
     return ok(undefined, await headline(projectId));
@@ -111,6 +113,7 @@ export async function addCostItem(projectId: string, values: NewItemValues): Pro
         action: "CREATE",
         summary: `Added cost item ${d.name} (${d.unitLabel}): My Cost ${d.myCost}, Customer ${d.customerCharge}`,
       });
+      await syncVariablesFromInputs(tx, projectId, currentUserName());
     });
     refresh(projectId);
     return ok(undefined, await headline(projectId));
@@ -145,6 +148,7 @@ export async function saveSlabSpec(projectId: string, values: SlabSpecValues): P
         before: before ? JSON.parse(JSON.stringify(before)) : undefined,
         after: JSON.parse(JSON.stringify(d)),
       });
+      await syncVariablesFromInputs(tx, projectId, currentUserName());
     });
     refresh(projectId);
     return ok(undefined, await headline(projectId));
@@ -180,6 +184,7 @@ export async function savePacking(projectId: string, values: PackingValues): Pro
         before: before ? JSON.parse(JSON.stringify(before)) : undefined,
         after: JSON.parse(JSON.stringify(d)),
       });
+      await syncVariablesFromInputs(tx, projectId, currentUserName());
     });
     refresh(projectId);
     return ok(undefined, await headline(projectId));

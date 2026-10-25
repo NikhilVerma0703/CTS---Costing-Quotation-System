@@ -8,6 +8,7 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { BRIGHTON_PARK, COST_ITEMS, CONVERSION_RULES } from "../src/lib/reference/brighton-park";
+import { STANDARD_FORMULAS } from "../src/lib/reference/standard-formulas";
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 const SEED_USER = "Seed";
@@ -33,6 +34,12 @@ async function main() {
   }
   console.log(`Conversion rules: ${CONVERSION_RULES.length}`);
 
+  // Standard formulas: created once, never overwritten (changes are made in the app, versioned).
+  for (const f of STANDARD_FORMULAS) {
+    await prisma.standardFormula.upsert({ where: { code: f.code }, update: {}, create: { ...f, edgeRule: f.edgeRule ?? null, updatedBy: SEED_USER } });
+  }
+  console.log(`Standard formulas: ${STANDARD_FORMULAS.length}`);
+
   const bp = BRIGHTON_PARK;
   const existing = await prisma.project.findUnique({ where: { code: bp.project.code } });
   if (existing) {
@@ -47,7 +54,6 @@ async function main() {
     const project = await tx.project.create({
       data: {
         ...bp.project,
-        status: "QUOTED",
         createdBy: SEED_USER,
         slabSpec: { create: { ...bp.slabSpec, updatedBy: SEED_USER } },
         packing: { create: { ...bp.packing, updatedBy: SEED_USER } },

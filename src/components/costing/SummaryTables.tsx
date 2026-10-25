@@ -1,5 +1,6 @@
 import type { CostSheet, EngineResult } from "@/lib/engine/types";
-import { dec2, dec4, money, qty } from "@/lib/engine/format";
+import { dec2, dec4, money, pct, qty } from "@/lib/engine/format";
+import { subtotals } from "@/lib/engine/subtotals";
 import { cn } from "@/lib/utils";
 
 /** Per-piece summary — layout of sheet 5 (Quote Summary). */
@@ -60,17 +61,6 @@ export function PieceSummaryTable({ result, sheet, currency }: { result: EngineR
 
 /** Subtotals by plan group and by area. */
 export function GroupSubtotals({ result, sheet, currency, by }: { result: EngineResult; sheet: CostSheet; currency: string; by: "group" | "area" }) {
-  const map = new Map<string, { pcs: number; sqft: number; total: number; rows: number }>();
-  sheet.lines.forEach((l, i) => {
-    const key = (by === "group" ? l.piece.group : l.piece.area) || "(none)";
-    const e = map.get(key) ?? { pcs: 0, sqft: 0, total: 0, rows: 0 };
-    e.pcs += l.unitsQty;
-    e.sqft += result.measurements[i].totalSqft;
-    e.total += l.total;
-    e.rows += 1;
-    map.set(key, e);
-  });
-  const grand = sheet.grandTotal || 1;
   return (
     <table className="w-full text-[13px]">
       <thead>
@@ -84,14 +74,14 @@ export function GroupSubtotals({ result, sheet, currency, by }: { result: Engine
         </tr>
       </thead>
       <tbody>
-        {[...map.entries()].map(([k, e]) => (
-          <tr key={k}>
-            <td className="td">{k}</td>
+        {subtotals(result, sheet, by).map((e) => (
+          <tr key={e.key}>
+            <td className="td">{e.key}</td>
             <td className="td num">{e.rows}</td>
             <td className="td num">{qty(e.pcs)}</td>
             <td className="td num">{dec2(e.sqft)}</td>
             <td className="td num font-semibold">{money(e.total, currency)}</td>
-            <td className="td num text-ink-2">{((e.total / grand) * 100).toFixed(1)}%</td>
+            <td className="td num text-ink-2">{pct(e.share, 1)}</td>
           </tr>
         ))}
       </tbody>

@@ -25,11 +25,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
-  ClipboardList,
   FileSpreadsheet,
   FileText,
   FolderKanban,
+  FunctionSquare,
+  LayoutDashboard,
   LayoutGrid,
   Menu,
   PieChart,
@@ -43,12 +43,9 @@ import { cn } from "@/lib/utils";
 
 const ICONS: Record<SectionDef["icon"], typeof Ruler> = {
   FileSpreadsheet,
-  Ruler,
   BadgeDollarSign,
   Calculator,
   Receipt,
-  ClipboardList,
-  ClipboardCheck,
   LayoutGrid,
   PieChart,
   FileText,
@@ -59,8 +56,10 @@ export interface ShellProject {
   code: string;
   name: string;
   customerName: string | null;
+  statusLabel: string;
+  /** Short reason the quote can't be issued yet, or the quote state. */
+  quoteLabel: string;
   ready: boolean;
-  errorCount: number;
 }
 
 interface NavRow {
@@ -71,6 +70,8 @@ interface NavRow {
   internal?: boolean;
   exact?: boolean;
 }
+
+const GLOBAL_PAGE: Record<string, string> = { "/dashboard": "Dashboard", "/formulas": "Formulas & Units" };
 
 const HIDE_KEY = "cts-sidebar-hidden";
 const HIDE_ATTR = "data-sidebar-hidden";
@@ -236,18 +237,22 @@ export function AppShell({
   }, [drawer]);
 
   const groups = useMemo(() => {
-    const projectRows: NavRow[] = [{ key: "projects", href: "/", label: "All Projects", Icon: FolderKanban, exact: true }];
+    const projectRows: NavRow[] = [
+      { key: "projects", href: "/", label: "All Projects", Icon: FolderKanban, exact: true },
+      { key: "dashboard", href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+    ];
     const sectionGroups = SECTION_GROUPS.map((g) => ({
       label: g,
       rows: SECTIONS.filter((s) => s.group === g).map<NavRow>((s) => ({
         key: s.slug,
         href: current ? sectionHref(current.id, s.slug) : null,
-        label: s.short.replace(/^\d+\.\s*/, ""),
+        label: s.short,
         Icon: ICONS[s.icon],
         internal: s.internal,
       })),
     }));
-    return [{ label: "Projects", rows: projectRows }, ...sectionGroups];
+    const settingsRows: NavRow[] = [{ key: "formulas", href: "/formulas", label: "Formulas & Units", Icon: FunctionSquare }];
+    return [{ label: "Overview", rows: projectRows }, ...sectionGroups, { label: "Settings", rows: settingsRows }];
   }, [current]);
 
   const section = SECTIONS.find((s) => current && (path === sectionHref(current.id, s.slug) || path.startsWith(sectionHref(current.id, s.slug) + "/")));
@@ -271,7 +276,9 @@ export function AppShell({
         )}
       >
         {current.ready ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
-        {current.ready ? "Quote ready to issue" : `${current.errorCount} issue${current.errorCount === 1 ? "" : "s"} to fix`}
+        <span className="truncate">
+          {current.statusLabel} · {current.quoteLabel}
+        </span>
       </Link>
       {projects.length > 1 && (
         <Link href="/" className="mt-1.5 block px-0.5 text-[11px] font-medium text-brand hover:underline">
@@ -400,7 +407,7 @@ export function AppShell({
           {!urlProjectId && (
             <>
               <ChevronRight className="size-3" />
-              <span className="font-medium text-gray-600">Projects</span>
+              <span className="font-medium text-gray-600">{GLOBAL_PAGE[path] ?? "All Projects"}</span>
             </>
           )}
         </div>

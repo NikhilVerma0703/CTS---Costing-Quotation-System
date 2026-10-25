@@ -24,6 +24,7 @@ import {
   type ResolvedRate,
   type SlabResult,
 } from "./types";
+import { dataChecks } from "./checks";
 
 const div = (a: number, b: number): number | null => (b === 0 || !Number.isFinite(b) ? null : a / b);
 
@@ -442,6 +443,18 @@ export function calculateProject(input: EngineInput): EngineResult {
   const customer = costSheet("customer", measurements, rates);
   const slab = slabCalc(input, rates, totals.totalSqft, conversionFor, issues);
   const summary = summarize(totals, internal, customer, slab);
+
+  issues.push(...dataChecks(input, measurements, totals));
+  // A slab count far above what the pieces need usually means it predates a drawing change.
+  if (slab && slab.utilization !== null && slab.utilization > 0 && slab.utilization < 0.5) {
+    issues.push({
+      severity: "warning",
+      check: true,
+      code: "SLAB_COUNT_STALE",
+      fixAt: "slab-calculation",
+      message: `Slab utilization is only ${(slab.utilization * 100).toFixed(1)}% (${slab.totalSlabs} slabs for ${totals.totalSqft.toFixed(2)} sqft of pieces) — check the slab count is from the current drawings.`,
+    });
+  }
 
   if (summary.totalQuote > 0 && summary.grossMargin < 0) {
     issues.push({

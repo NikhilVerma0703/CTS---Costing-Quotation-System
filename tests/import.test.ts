@@ -58,9 +58,59 @@ describe("drawing sheet import", () => {
     expect(r.rows[2].piece!.length).toBe(93.25);
   });
 
-  it("explains a missing required column", async () => {
+  it("asks for a missing required column instead of guessing", async () => {
     const r = await parseDrawingSheet("x.csv", csv("Dwg#,Piece,Description,L (in),W (in)\n1,1,Top,10,20\n"));
     expect(r.ok).toBe(false);
-    expect(r.fileErrors[0]).toMatch(/Units Qty/);
+    expect(r.needsMapping).toBe(true);
+    expect(r.missingRequired).toEqual(["unitsQty"]);
+  });
+
+  it("recognises differently named columns and keeps extra ones", async () => {
+    const r = await parseDrawingSheet(
+      "x.csv",
+      csv(
+        "DWG NO,Unit Type / Group,Area,Piece,Description,Length (in),Width (in),Sink Cuts,Units Qty,Sqft / Piece,Qty AS,Qty R,Total Units\n" +
+          "4,BERGA,Kitchen,1,Island Top,93.25,44.75,1,53,28.98,30,23,53\n",
+      ),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.mapping).toMatchObject({ dwgNo: "DWG NO", group: "Unit Type / Group", length: "Length (in)", sqftPerPc: "Sqft / Piece" });
+    expect(r.columns.find((c) => c.header === "Unit Type / Group")!.match).toBe("auto");
+    expect(r.unmappedHeaders).toEqual(["Qty AS", "Qty R", "Total Units"]);
+    const p = r.rows[0].piece!;
+    expect(p.group).toBe("BERGA");
+    expect(p.extra).toEqual({ "Qty AS": "30", "Qty R": "23", "Total Units": "53" });
+    expect(p.sheetValues).toEqual({ sqftPerPc: 28.98 });
+    expect(r.addedDefaults).toContain("faucetHoles");
+  });
+
+  it("flags an ambiguous column and applies the user's choice", async () => {
+    const sheet = csv("Dwg#,Piece,Description,L,W,Qty,Joints,Joint DE&P\n1,1,Top,10,20,2,0,3\n");
+    const first = await parseDrawingSheet("x.csv", sheet);
+    const col = first.columns.find((c) => c.header === "Joint DE&P")!;
+    expect(col.match).toBe("ambiguous");
+    expect(col.candidates).toEqual(["depLf"]); // Joints already has its own column
+    expect(first.needsMapping).toBe(true);
+    const second = await parseDrawingSheet("x.csv", sheet, { overrides: { columns: { [col.index]: "extra" } } });
+    expect(second.ok).toBe(true);
+    expect(second.rows[0].piece!.extra).toEqual({ "Joint DE&P": "3" });
+  });
+
+  it("uses Total Pcs for Units Qty and generates piece numbers only when agreed", async () => {
+    const sheet = csv("Drawing,Area,L (in),W (in),Total Pcs\n7,Kitchen,30,20,4\n7,Kitchen,10,20,2\n");
+    const ask = await parseDrawingSheet("x.csv", sheet);
+    expect([...ask.missingRequired].sort()).toEqual(["description", "pieceNo"]);
+    const r = await parseDrawingSheet("x.csv", sheet, { overrides: { generate: ["pieceNo", "description"] } });
+    expect(r.ok).toBe(true);
+    expect(r.rows.map((x) => x.piece!.pieceNo)).toEqual(["1", "2"]);
+    expect(r.rows[0].piece).toMatchObject({ unitsQty: 4, description: "Kitchen" });
+    expect(r.fileWarnings.join(" ")).toMatch(/Total Pcs/);
+  });
+
+  it("takes edge rules from the stored standard formulas", async () => {
+    const r = await parseDrawingSheet("x.csv", csv("Dwg#,Piece,Description,L,W,Units Qty\n1,1,Top,10,20,1\n"), {
+      edgeDefaults: { cuttingRule: "ONE_LENGTH_ONE_WIDTH", depRule: "NONE", islandDepRule: "FULL_PERIMETER" },
+    });
+    expect(r.rows[0].piece).toMatchObject({ cuttingRule: "ONE_LENGTH_ONE_WIDTH", depRule: "NONE" });
   });
 });

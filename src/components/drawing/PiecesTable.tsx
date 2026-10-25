@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Pencil, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Pencil, Search, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { deletePiece } from "@/modules/drawing/actions";
 import type { PieceFormInput } from "@/modules/drawing/schema";
@@ -19,6 +19,11 @@ export interface PieceRow {
   sqftPerPc: number;
   totalSqft: number;
   depRuleShort: string;
+  /** "2 × (93.25 + 44.75) ÷ 12 = 23.0000" — how each calculated value was produced. */
+  formula: { cutting: string; dep: string; sqft: string };
+  extra: Record<string, string>;
+  /** Data-check messages about this piece. */
+  flags: string[];
 }
 
 const f2 = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -29,9 +34,11 @@ export function PiecesTable({
   rows,
   totals,
   suggestions,
+  extraColumns,
 }: {
   projectId: string;
   rows: PieceRow[];
+  extraColumns: string[];
   totals: { totalPcs: number; totalSqft: number; sinkCutouts: number };
   suggestions: Parameters<typeof PieceForm>[0]["suggestions"];
 }) {
@@ -90,14 +97,26 @@ export function PiecesTable({
               <th className="th num bg-info-bg">DE&amp;P LF</th>
               <th className="th num bg-info-bg">Sqft/Pc</th>
               <th className="th num bg-info-bg">Total Sqft</th>
+              {extraColumns.map((c) => (
+                <th key={c} className="th bg-accent-bg normal-case">
+                  {c}
+                </th>
+              ))}
               <th className="th">Source</th>
               <th className="th" />
             </tr>
           </thead>
           <tbody>
             {filtered.map((r) => (
-              <tr key={r.id} className="hover:bg-shell">
-                <td className="td">{r.form.dwgNo}</td>
+              <tr key={r.id} className={cn("hover:bg-shell", r.flags.length > 0 && "bg-warn-bg/30")}>
+                <td className="td whitespace-nowrap">
+                  {r.flags.length > 0 && (
+                    <span title={r.flags.join("\n")} className="mr-1 inline-flex align-[-2px] text-warn-fg">
+                      <AlertTriangle className="size-3.5" />
+                    </span>
+                  )}
+                  {r.form.dwgNo}
+                </td>
                 <td className="td max-w-52 truncate" title={r.form.group ?? ""}>
                   {r.form.group}
                 </td>
@@ -122,13 +141,24 @@ export function PiecesTable({
                 <td className="td num">{String(r.form.rCorners)}</td>
                 <td className="td num">{String(r.form.joints)}</td>
                 <td className="td num font-semibold">{String(r.form.unitsQty)}</td>
-                <td className="td num bg-info-bg/40">{f4(r.cuttingLf)}</td>
-                <td className="td num bg-info-bg/40" title={r.depRuleShort}>
+                <td className="td num bg-info-bg/40" title={r.formula.cutting}>
+                  {f4(r.cuttingLf)}
+                </td>
+                <td className="td num bg-info-bg/40" title={`${r.depRuleShort}\n${r.formula.dep}`}>
                   {f4(r.depLf)}
                   {r.form.depRule === "FULL_PERIMETER" && <span className="ml-1 text-[10px] font-bold text-info-fg">FP</span>}
                 </td>
-                <td className="td num bg-info-bg/40">{f4(r.sqftPerPc)}</td>
-                <td className="td num bg-info-bg/40">{f2(r.totalSqft)}</td>
+                <td className="td num bg-info-bg/40" title={r.formula.sqft}>
+                  {f4(r.sqftPerPc)}
+                </td>
+                <td className="td num bg-info-bg/40" title={`Sqft/Pc × ${r.form.unitsQty}`}>
+                  {f2(r.totalSqft)}
+                </td>
+                {extraColumns.map((c) => (
+                  <td key={c} className="td text-ink-2">
+                    {r.extra[c]}
+                  </td>
+                ))}
                 <td className="td">
                   <span className={cn("badge", r.source === "IMPORT" ? "bg-info-bg text-info-fg" : "bg-accent-bg text-accent")}>
                     {r.source === "IMPORT" ? "Import" : "Manual"}
@@ -159,7 +189,7 @@ export function PiecesTable({
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td className="td py-8 text-center text-ink-3" colSpan={21}>
+                <td className="td py-8 text-center text-ink-3" colSpan={21 + extraColumns.length}>
                   {rows.length === 0 ? "No pieces yet — import the sheet above or add pieces below." : "No piece matches the search."}
                 </td>
               </tr>
@@ -178,15 +208,13 @@ export function PiecesTable({
                 <td className="td num">{totals.totalPcs.toLocaleString("en-US")}</td>
                 <td className="td" colSpan={3} />
                 <td className="td num">{f2(totals.totalSqft)}</td>
-                <td className="td" colSpan={2} />
+                <td className="td" colSpan={2 + extraColumns.length} />
               </tr>
             </tfoot>
           )}
         </table>
       </div>
-      <p className="mt-2 text-xs text-ink-3">
-        Shaded columns are calculated (see Unit Conversion). FP = DE&amp;P on full perimeter. Total row sink cutouts = Σ Sink Cuts × Units Qty.
-      </p>
+      <p className="mt-2 text-xs text-ink-3">Shaded columns use the standard formulas — hover a value to see it worked out. FP = DE&amp;P on full perimeter.</p>
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} title={editing ? `Edit Dwg ${editing.form.dwgNo} · piece ${editing.form.pieceNo}` : ""} wide>
         {editing && (

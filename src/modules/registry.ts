@@ -1,18 +1,15 @@
 /** Project sections, in workflow order. One place drives the sidebar and the "next step" links. */
 export type SectionIcon =
   | "FileSpreadsheet"
-  | "Ruler"
   | "BadgeDollarSign"
   | "Calculator"
   | "Receipt"
-  | "ClipboardList"
-  | "ClipboardCheck"
   | "LayoutGrid"
   | "PieChart"
   | "FileText";
 
-export type SectionGroup = "Inputs" | "Costing & Calculations" | "Output";
-export const SECTION_GROUPS: SectionGroup[] = ["Inputs", "Costing & Calculations", "Output"];
+export type SectionGroup = "Inputs" | "Costing" | "Summary & Quote";
+export const SECTION_GROUPS: SectionGroup[] = ["Inputs", "Costing", "Summary & Quote"];
 
 export interface SectionDef {
   slug: string;
@@ -25,16 +22,15 @@ export interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
-  { slug: "import-drawing", label: "Import Drawing Sheet", short: "Import Drawing", group: "Inputs", icon: "FileSpreadsheet" },
-  { slug: "unit-conversion", label: "Unit Conversion", short: "Unit Conversion", group: "Inputs", icon: "Ruler" },
+  { slug: "import-drawing", label: "Drawing & Variables", short: "Drawing & Variables", group: "Inputs", icon: "FileSpreadsheet" },
   { slug: "cost-inputs", label: "Cost Inputs", short: "Cost Inputs", group: "Inputs", icon: "BadgeDollarSign", internal: true },
-  { slug: "internal-costing", label: "Internal Costing (My Cost)", short: "1. Internal Costing", group: "Costing & Calculations", icon: "Calculator", internal: true },
-  { slug: "customer-charges", label: "Customer Charges (Custom Quote)", short: "2. Customer Charges", group: "Costing & Calculations", icon: "Receipt" },
-  { slug: "internal-summary", label: "Internal Costing Summary", short: "3. Internal Summary", group: "Costing & Calculations", icon: "ClipboardList", internal: true },
-  { slug: "customer-summary", label: "Customer Charges Summary", short: "4. Customer Summary", group: "Costing & Calculations", icon: "ClipboardCheck" },
-  { slug: "slab-calculation", label: "Slab Calculation", short: "5. Slab Calculation", group: "Costing & Calculations", icon: "LayoutGrid", internal: true },
-  { slug: "project-summary", label: "Project Summary", short: "6. Project Summary", group: "Costing & Calculations", icon: "PieChart", internal: true },
-  { slug: "final-quote", label: "Final Quote / PDF", short: "7. Final Quote / PDF", group: "Output", icon: "FileText" },
+  { slug: "internal-costing", label: "Internal Costing", short: "Internal Costing", group: "Costing", icon: "Calculator", internal: true },
+  { slug: "customer-charges", label: "Customer Charges", short: "Customer Charges", group: "Costing", icon: "Receipt" },
+  { slug: "slab-calculation", label: "Slab Calculation", short: "Slab Calculation", group: "Costing", icon: "LayoutGrid", internal: true },
+  { slug: "project-summary", label: "Project Summary", short: "Project Summary", group: "Summary & Quote", icon: "PieChart", internal: true },
+  { slug: "final-quote", label: "Final Quote / PDF", short: "Final Quote", group: "Summary & Quote", icon: "FileText" },
 ];
 
-export const sectionHref = (projectId: string, slug: string) => `/projects/${projectId}/${slug}`;
+/** Section links an issue can point at; Unit Conversion now lives with the standard formulas. */
+export const sectionHref = (projectId: string, slug: string) =>
+  slug === "unit-conversion" ? "/formulas" : `/projects/${projectId}/${slug}`;

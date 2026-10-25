@@ -13,9 +13,10 @@
 //            ├─ DrawingGroup              plan groups (normalized)
 //            ├─ DrawingPiece ─► DrawingGroup, ImportBatch
 //            ├─ ImportBatch               each drawing-sheet import
+//            ├─ VariablesSheet (1:1)      uploaded / reused Variables sheet (rate card source)
 //            ├─ ProjectNote               internal / customer-visible notes
 //            └─ QuoteRevision             frozen input + result snapshot
-//   UnitConversionRule (global) · CostItem (global) · AuditLog (global)
+//   UnitConversionRule (global) · CostItem (global) · StandardFormula (global) · AuditLog (global)
 
 generator client {
   provider   = "prisma-client-js"
@@ -112,6 +113,18 @@ enum MeasurementType {
   AREA
 }
 
+enum VariablesSource {
+  UPLOAD // read from an uploaded Variables workbook
+  REUSED // copied from another project's Variables sheet / rate card
+}
+
+enum FormulaCategory {
+  MEASUREMENT
+  COSTING
+  SLAB
+  SUMMARY
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Project
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +144,8 @@ model Project {
   /// Free-text version label kept with the costing, e.g. "Ver 5".
   versionLabel String?
   description  String?
+  /// Extra important fields added at creation: [{ label, value }].
+  extraFields  Json?
 
   createdBy String?
   updatedBy String?
@@ -147,6 +162,7 @@ model Project {
   imports       ImportBatch[]
   notes         ProjectNote[]
   revisions     QuoteRevision[]
+  variables     VariablesSheet?
 
   @@index([status])
   @@index([name])
@@ -373,6 +389,10 @@ model DrawingPiece {
   cuttingRule   EdgeRule     @default(FULL_PERIMETER)
   depRule       EdgeRule     @default(ONE_LENGTH_ONE_WIDTH)
   notes         String?
+  /// Columns of the uploaded sheet that are not standard fields, kept as read: { "Qty AS": "12", … }.
+  extra         Json?
+  /// The sheet's own calculated values (Cutting LF, Sqft/Pc …), kept to check against the system.
+  sheetValues   Json?
 
   createdBy     String?
   updatedBy     String?
@@ -384,6 +404,51 @@ model DrawingPiece {
   @@index([projectId, dwgNo])
   @@index([groupId])
   @@index([area])
+}
+
+/// The project's Variables sheet: where its rate card, slab size and packing
+/// came from. `values` holds the sheet's data (VariablesData); applying it
+/// writes SlabSpec, PackingConfig and ProjectCostInput, which the engine reads.
+model VariablesSheet {
+  id                  String          @id @default(cuid())
+  projectId           String          @unique
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source              VariablesSource
+  fileName            String?
+  sheetName           String?
+  copiedFromProjectId String?
+  copiedFromLabel     String?
+  materialLabel       String?
+  values              Json
+  /// Parse warnings and checks.
+  report              Json?
+  createdBy           String?
+  updatedBy           String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Standard formulas (global). The engine implements them; this table is the
+// permanent, versioned record of which formula every project uses, and holds
+// the edge-rule parameters new uploads take as defaults.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model StandardFormula {
+  id           String          @id @default(cuid())
+  code         String          @unique // CUTTING_LF, DEP_LF, SQFT_PER_PC …
+  name         String
+  category     FormulaCategory
+  expression   String
+  description  String?
+  /// Edge-length formulas only: which edges are measured.
+  edgeRule     EdgeRule?
+  sortOrder    Int             @default(0)
+  version      Int             @default(1)
+  changeReason String?
+  updatedBy    String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

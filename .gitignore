@@ -9,3 +9,7 @@ next-env.d.ts
 # Secrets — never commit (copy .env.example instead)
 .env
 .env.local
+
+# Local database backups
+/db-backups
+/.tmp-inspect

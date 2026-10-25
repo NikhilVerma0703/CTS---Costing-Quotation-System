@@ -105,7 +105,6 @@ export function CostInputsTable({ projectId, rows }: { projectId: string; rows: 
                 <button type="button" className="btn-secondary btn-sm" onClick={() => setAdding(true)}>
                   <Plus className="size-4" /> Add cost item
                 </button>
-                <span className="ml-3 text-xs text-ink-3">A new charge that multiplies one of the drawing quantities (sqft, LF or counts).</span>
               </td>
             </tr>
           )}

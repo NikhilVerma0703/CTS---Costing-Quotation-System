@@ -78,6 +78,8 @@ export interface PieceInput {
   cuttingRule: EdgeRule;
   depRule: EdgeRule;
   notes: string | null;
+  /** The uploaded sheet's own calculated values, when it had them — checked, never used. */
+  sheetValues?: Partial<Record<"cuttingLf" | "depLf" | "sqftPerPc" | "totalPcs" | "totalSqft", number>> | null;
 }
 
 export interface SlabDriverInput {
@@ -108,6 +110,8 @@ export interface EngineInput {
   conversionRules: ConversionRuleInput[];
   costInputs: CostInputRow[];
   pieces: PieceInput[];
+  /** Figures the Variables sheet was built on, to flag when the drawings have moved on. */
+  variablesSheet?: { fileName: string | null; totalSqft: number | null; packingPerSqft: number | null } | null;
 }
 
 // ─── Results ────────────────────────────────────────────────────────────────
@@ -118,6 +122,10 @@ export interface Issue {
   message: string;
   /** Section the user should go to, to fix it. */
   fixAt?: "import-drawing" | "unit-conversion" | "cost-inputs" | "slab-calculation";
+  /** Data checks: the piece the flag is about. */
+  pieceId?: string;
+  /** Data checks are "verify" flags: values to confirm, never changed by the system. */
+  check?: boolean;
 }
 
 export interface AppliedConversion {

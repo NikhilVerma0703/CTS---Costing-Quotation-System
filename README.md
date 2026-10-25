@@ -49,18 +49,21 @@ For other PCs on the network: `npm run build`, then `npm start`, and open `http:
 
 ## Workflow
 
+**All Projects** (the landing page) lists every project with its status and quote status; **+ New Project** asks only for code, name, customer, description and any extra fields, then opens the project's inputs. **Dashboard** sums the live figures of all projects. **Formulas & Units** holds the stored standard formulas and the unit conversion rules shared by every project.
+
 | Section | What it does |
 |---|---|
-| **Import Drawing Sheet** | Upload the drawing summary `.xlsx` / `.csv`. Columns are matched by name, the L/W unit is read from the header (`L (in)`, `L (mm)`), every row is validated and previewed before saving. Replace all or add. Manual entry form below with the same fields. |
-| **Unit Conversion** | Conversion rules (in→ft ÷12, sq in→sqft ÷144, mm, cm, m…) — editable. Shows every formula and each piece's actual Cutting LF / DE&P LF / Sqft with the numbers. Edge rules per piece can be switched here. |
-| **Cost Inputs** | Unit · Cost Item · My Cost · Customer Charges. Material customer rate can follow My Cost; Packing rate comes from the packing calculation (containers × Rs ÷ exchange rate ÷ total sqft). Slab size and packing figures. Full change history. |
-| 1. Internal Costing | Per piece: drawing quantity × My Cost rate for every item. |
-| 2. Customer Charges | Same with customer rates. |
-| 3. Internal Costing Summary | Per piece, build-up, by cost item, by group, by area. |
-| 4. Customer Charges Summary | The Quote Summary sheet + the same breakdowns. |
-| 5. Slab Calculation | Optimizer slab count + adjustments → purchased / used / waste sqft, utilization, slab-basis material. |
-| 6. Project Summary | Scope, cost build-up, margin, $/slab, final $/sqft; internal notes and customer quote notes. |
-| 7. Final Quote / PDF | Preview, draft PDF (always the latest inputs), **Issue revision** (freezes a numbered copy: Q-CODE-R1, R2…), revision history with PDFs. |
+| **Drawing & Variables** | Upload the **Drawing Summary sheet** (required) and the **Variables sheet** (optional — or reuse another project's). Columns are recognised by name and by their words ("Unit Type / Group" → Group); an unclear column is asked about, never guessed. Columns that are not standard fields are kept as extra columns; missing optional columns are added with 0 / blank. Uploaded sheets can be edited in a table or deleted permanently. Data checks flag values to verify (unit mix-ups, pieces larger than a slab, sheet values that disagree with the formulas, duplicates, stale slab counts) without changing them. |
+| **Cost Inputs** | Unit · Cost Item · My Cost · Customer Charges, slab size, packing — the same values as the Variables sheet, kept in step. Rates are compared with other projects. Full change history. |
+| **Internal Costing** | Per piece: drawing quantity × My Cost rate for every item. Summary tab: build-up, by cost item, by group, by area. |
+| **Customer Charges** | The same with customer rates; Summary tab = the Quote Summary sheet. |
+| **Slab Calculation** | Optimizer slab count + adjustments → purchased / used / waste sqft, utilization, slab-basis material. |
+| **Project Summary** | Status, scope, cost build-up, margin, $/slab, final $/sqft; internal notes and customer quote notes. |
+| **Final Quote / PDF** | Preview, draft PDF (always the latest inputs), **Issue revision** (freezes a numbered copy: Q-CODE-R1, R2…), revision history with PDFs. |
+
+Every section has **Export Excel** and **Export PDF** (`/api/export`). Internal exports are marked "Internal — not for customer"; Customer Charges and the Final Quote export are built from customer values only.
+
+**Status** follows the data: Setup (no drawing) → In costing (something blocks the quote — the reason is shown) → Ready to quote → Quoted (a revision is issued). Won / Lost / Archived are set in Project details.
 
 Purple = internal (My Cost) — never on the customer PDF. Green = customer-facing.
 

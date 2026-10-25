@@ -11,17 +11,32 @@ import { SideTag } from "@/components/ui/SideTag";
 import { NotesEditor } from "@/components/notes/NotesEditor";
 import { EditProjectButton } from "@/components/projects/EditProjectButton";
 import { sectionHref } from "@/modules/registry";
+import { ExportButtons } from "@/components/ui/ExportButtons";
+import { extraFieldsOf, projectFormValues } from "@/lib/project-fields";
+import { projectStatus, TONE_CLASS } from "@/lib/status";
+import { cn, num } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Project Summary" };
 
 export default async function ProjectSummaryPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const [project, notes, activity, { result }] = await Promise.all([
+  const [project, notes, activity, latestRev, { result }] = await Promise.all([
     getProject(projectId),
     prisma.projectNote.findMany({ where: { projectId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     prisma.auditLog.findMany({ where: { projectId }, orderBy: { createdAt: "desc" }, take: 12 }),
+    prisma.quoteRevision.findFirst({ where: { projectId }, orderBy: { revisionNo: "desc" } }),
     getProjectCalculation(projectId),
   ]);
+  const extras = extraFieldsOf(project);
+  const status = projectStatus({
+    stored: project.status,
+    pieceRows: result.drawingTotals.pieceRows,
+    issues: result.issues,
+    ready: result.ready,
+    liveQuote: result.summary.totalQuote,
+    currency: project.currency,
+    latestRevision: latestRev ? { revisionNo: latestRev.revisionNo, quoteNumber: latestRev.quoteNumber, totalQuote: num(latestRev.totalQuote)! } : null,
+  });
   const s = result.summary;
   const cur = project.currency;
   const tz = process.env.APP_TIMEZONE || "Asia/Kolkata";
@@ -39,29 +54,39 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
         side="internal"
         title="Project Summary"
         description={
-          <>
-            {project.name}
-            {project.versionLabel ? ` · ${project.versionLabel}` : ""}. Piece-basis fabrication plus slab-basis material, for both My Cost and the customer quote.
-          </>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className={cn("badge", TONE_CLASS[status.tone])}>{status.label}</span>
+            <span className={cn("badge", TONE_CLASS[status.quote.tone])}>{status.quote.label}</span>
+            <span>
+              {project.code}
+              {project.customerName ? ` · ${project.customerName}` : ""}
+              {project.versionLabel ? ` · ${project.versionLabel}` : ""}
+            </span>
+          </span>
         }
         actions={
-          <EditProjectButton
-            projectId={projectId}
-            initial={{
-              code: project.code,
-              name: project.name,
-              customerName: project.customerName ?? "",
-              siteAddress: project.siteAddress ?? "",
-              contactName: project.contactName ?? "",
-              contactEmail: project.contactEmail ?? "",
-              versionLabel: project.versionLabel ?? "",
-              validityDays: project.validityDays,
-              status: project.status,
-              description: project.description ?? "",
-            }}
-          />
+          <>
+            <ExportButtons scope="project-summary" projectId={projectId} />
+            <EditProjectButton projectId={projectId} initial={projectFormValues(project)} />
+          </>
         }
       />
+      {(project.description || extras.length > 0) && (
+        <div className="card mb-5 grid gap-x-6 gap-y-2 px-4 py-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          {project.description && (
+            <div className="sm:col-span-2 lg:col-span-4">
+              <p className="text-[11px] font-semibold text-ink-3 uppercase">Description</p>
+              <p className="mt-0.5 text-ink-2">{project.description}</p>
+            </div>
+          )}
+          {extras.map((f) => (
+            <div key={f.label}>
+              <p className="text-[11px] font-semibold text-ink-3 uppercase">{f.label}</p>
+              <p className="mt-0.5 font-semibold">{f.value || "—"}</p>
+            </div>
+          ))}
+        </div>
+      )}
       <IssuesBanner issues={result.issues} projectId={projectId} />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -104,10 +129,10 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
           </Section>
         </div>
 
-        <Section title="Cost build-up" description="Piece-basis fabrication + slab-basis material" bodyClassName="p-0">
+        <Section title="Cost build-up" bodyClassName="p-0">
           <table className="w-full text-[13.5px]">
             <tbody>
-              <Row label="Fabrication cost (Cutting + DE&P + Sink + Faucet + R-Corner + Joint + Packing) — My Cost" value={money(s.fabricationMyCost, cur)} href={sectionHref(projectId, "internal-costing")} />
+              <Row label="Fabrication — My Cost" value={money(s.fabricationMyCost, cur)} href={sectionHref(projectId, "internal-costing")} />
               <Row label={`Slab-basis material cost (${s.totalSlabs} slabs, from Slab Calculation)`} value={money(s.slabMaterialMyCost, cur)} href={sectionHref(projectId, "slab-calculation")} />
               <Row label="TOTAL INTERNAL COST (My Cost)" value={money(s.totalInternalCost, cur)} strong tone="internal" />
               <Row label="Fabrication (customer side)" value={money(s.fabricationCustomer, cur)} href={sectionHref(projectId, "customer-charges")} />
@@ -127,10 +152,10 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-2">
-        <Section title={<span className="flex items-center gap-2">Notes / assumptions <SideTag side="internal" /></span>} description="Version log and costing assumptions. Never printed on the quote.">
+        <Section title={<span className="flex items-center gap-2">Notes / assumptions <SideTag side="internal" /></span>}>
           <NotesEditor projectId={projectId} notes={notes} visibility="INTERNAL" />
         </Section>
-        <Section title={<span className="flex items-center gap-2">Quote notes <SideTag side="customer" /></span>} description="Scope, inclusions and exclusions printed on the customer PDF.">
+        <Section title={<span className="flex items-center gap-2">Quote notes <SideTag side="customer" /></span>} description="Printed on the customer PDF.">
           <NotesEditor projectId={projectId} notes={notes} visibility="CUSTOMER" />
         </Section>
       </div>

@@ -68,20 +68,21 @@ Conventions: cuid ids, `createdAt`/`updatedAt` everywhere, `deletedAt` soft dele
 ```
 src/
   app/
-    page.tsx                         projects list / create
+    page.tsx                         All Projects (landing) + New Project
+    dashboard/                       KPIs, by status, by customer, by project
+    formulas/                        standard formulas + unit conversion rules
     projects/[projectId]/
-      layout.tsx                     project shell + section nav
-      import-drawing/                Import Drawing Sheet + manual entry
-      unit-conversion/               rules + applied conversions
-      cost-inputs/                   rates, slab spec, packing
-      internal-costing/              1. My Cost per piece
-      customer-charges/              2. Customer price per piece
-      internal-summary/              3.
-      customer-summary/              4.
-      slab-calculation/              5.
-      project-summary/               6.
-      final-quote/                   7. preview, PDF download, revisions
+      layout.tsx                     validates the project (shell is in (app)/layout)
+      import-drawing/                Drawing & Variables: uploads, sheets, data checks, pieces
+      cost-inputs/                   rates, slab spec, packing, comparison with other projects
+      internal-costing/              My Cost per piece · ?view=summary
+      customer-charges/              customer price per piece · ?view=summary
+      slab-calculation/
+      project-summary/
+      final-quote/                   preview, PDF, revisions
+      unit-conversion/, internal-summary/, customer-summary/   redirects (old links)
     api/projects/[projectId]/quote-pdf/route.ts   customer PDF (draft or issued revision)
+    api/export/route.ts              Excel / PDF export of any section
   lib/
     engine/                          pure calculation (types, calculate, format)
     import/drawing-sheet.ts          ExcelJS parser, column mapping, validation
@@ -91,6 +92,15 @@ src/
   modules/<section>/actions.ts       server actions (Zod-validated, transactional, audited)
   lib/reference/brighton-park.ts     reference data from the workbooks (seed + tests)
 ```
+
+## Uploads, formulas and checks
+
+- **Drawing sheet** (`src/lib/import/drawing-sheet.ts`): headers are matched exactly, then by their words; a header that could be two fields, or a required field with no column, is returned as a question (`needsMapping`) and the user's answers are sent back with the file. Unknown columns are stored per piece in `DrawingPiece.extra`; the sheet's own calculated columns in `DrawingPiece.sheetValues` (checked, never used). Edit / delete of an upload: `saveSheetEdits`, `deleteImportBatch` in `modules/drawing/actions.ts`.
+- **Variables sheet** (`src/lib/import/variables-sheet.ts`): read by label; formula cells keep their meaning (=B28 → packing, =C12 → same as My Cost). Stored in `VariablesSheet` (one per project, uploaded or reused) and applied to SlabSpec / PackingConfig / ProjectCostInput, which the engine reads. Edits on Cost Inputs are written back to it (`syncVariablesFromInputs`).
+- **Standard formulas** (`StandardFormula`, defined in `src/lib/reference/standard-formulas.ts`): the permanent, versioned record of the formulas the engine implements. The edge formulas (Cutting LF, DE&P LF, island DE&P) carry the rule new uploads and manual entries use; changing one needs a reason and is audited.
+- **Data checks** (`src/lib/engine/checks.ts`): warnings with `check: true` and the piece they concern. They never change a value or block the quote.
+- **Status** (`src/lib/status.ts`): project and quote status worked out from pieces, blocking issues and issued revisions; the stored `Project.status` only carries Won / Lost / Archived.
+- **Exports** (`src/lib/export/`): each section builds one `ExportDoc`, written as Excel (ExcelJS) or PDF (@react-pdf).
 
 ## Customer PDF boundary
 

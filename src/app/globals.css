@@ -1,37 +1,35 @@
 @import "tailwindcss";
 
-/* Same palette as the other Pacific Surfaces ERPs, so this module feels like
-   part of one system. */
+/* One design language for every screen: quiet neutrals, the brand colour for actions and the current place, colour only where it means something. */
 @theme {
-  /* Pacific ERP palette (Robo / Chromia): brand teal, Pacific dark, cool grey page. */
-  --color-ink: #0f1720;
+  --color-ink: #101828;
   --color-ink-2: #475467;
-  --color-ink-3: #98a2b3;
-  --color-line: #e4e7ec;
+  --color-ink-3: #7b8698;
+  --color-line: #e7eaee;
   --color-line-2: #d0d5dd;
-  --color-shell: #eef1f4;
+  --color-shell: #f5f7f9;
   --color-brand: #0f4c5c;
-  --color-brand-2: #1f6d80;
-  --color-pacific-dark: #112732;
-  --color-accent: #0f4c5c;
-  --color-accent-bg: #eef5f7;
-
-  --color-ok-bg: #e7f6ec;
-  --color-ok-fg: #1a7f43;
-  --color-warn-bg: #fff4d6;
-  --color-warn-fg: #946200;
-  --color-bad-bg: #fde7e7;
-  --color-bad-fg: #b02a2a;
+  --color-brand-2: #1a6478;
   --color-info-bg: #eef5f7;
-  --color-info-fg: #0f4c5c;
+  --color-ok-fg: #067647;
+  --color-warn-bg: #fffaeb;
+  --color-warn-line: #fedf89;
+  --color-warn-fg: #93530a;
+  --color-bad-bg: #fef3f2;
+  --color-bad-fg: #b42318;
   --color-mute-bg: #f2f4f7;
-  --color-mute-fg: #667085;
+  --color-head: #f8f9fb;
+  --color-hairline: #f0f2f5;
 
-  /* Internal (My Cost) vs customer-facing values are colour-coded everywhere. */
-  --color-internal: #7c3aed;
-  --color-internal-bg: #f3effe;
-  --color-customer: #047857;
-  --color-customer-bg: #e8f6f0;
+  /* A typed input, as on the workbooks. A hand-edited cost cell. */
+  --color-input: #1d4ed8;
+  --color-edited: #fef0c7;
+
+  /* Internal (My Cost) and customer-facing figures are colour-coded everywhere. */
+  --color-internal: #6941c6;
+  --color-internal-bg: #f4f3ff;
+  --color-customer: #067647;
+  --color-customer-bg: #ecfdf3;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -40,98 +38,223 @@
   html {
     color-scheme: light;
   }
-  /* 16px root like Pacific ERP, so spacing (rem) matches; body text stays 14px. */
-  html {
-    font-size: 16px;
-  }
   body {
-    background:
-      radial-gradient(1200px 600px at 100% -10%, rgba(15, 76, 92, 0.06), transparent 60%),
-      radial-gradient(900px 500px at -10% 110%, rgba(15, 76, 92, 0.05), transparent 55%),
-      var(--color-shell);
-    background-attachment: fixed;
+    background: var(--color-shell);
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 14px;
-    -webkit-tap-highlight-color: transparent;
-  }
-  table {
-    border-collapse: collapse;
   }
   :focus-visible {
     outline: 2px solid var(--color-brand-2);
     outline-offset: 2px;
   }
-  input[type="number"]::-webkit-inner-spin-button,
-  input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  input[type="number"] {
-    -moz-appearance: textfield;
-  }
-  dialog::backdrop {
-    background: rgb(15 23 42 / 0.45);
+  .lucide {
+    stroke-width: 1.75;
   }
 }
 
 @utility card {
-  @apply rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)];
+  @apply rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)];
 }
 @utility label {
-  @apply mb-1 block text-[13px] font-semibold text-ink-2;
+  @apply mb-1.5 block text-[13px] font-medium text-ink-2;
 }
 @utility input {
-  @apply block min-h-10 w-full rounded-lg border border-line-2 bg-white px-3 py-2 text-[14px] text-ink
-    placeholder:text-ink-3 focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 focus:outline-none
-    disabled:cursor-not-allowed disabled:bg-mute-bg disabled:text-ink-3;
-}
-@utility input-sm {
-  @apply min-h-8 px-2 py-1 text-[13px];
-}
-@utility input-error {
-  @apply border-bad-fg focus:border-bad-fg focus:ring-bad-fg/20;
+  @apply block min-h-9 w-full rounded-lg border border-line-2 bg-white px-3 py-1.5 text-[14px] text-ink
+    transition-shadow placeholder:text-ink-3 focus:border-brand-2 focus:ring-3 focus:ring-brand-2/15 focus:outline-none;
 }
 @utility btn {
-  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold
-    transition-colors select-none disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium whitespace-nowrap
+    transition-colors select-none disabled:cursor-not-allowed disabled:opacity-50;
 }
 @utility btn-primary {
-  @apply btn bg-brand text-white hover:bg-brand-2;
+  @apply btn bg-brand text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)] hover:bg-brand-2;
 }
 @utility btn-secondary {
-  @apply btn border border-line-2 bg-white text-brand hover:bg-info-bg;
+  @apply btn border border-line-2 bg-white text-ink shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:bg-mute-bg;
 }
 @utility btn-ghost {
-  @apply btn text-ink-2 hover:bg-mute-bg;
+  @apply btn text-ink-2 hover:bg-mute-bg hover:text-ink;
 }
-@utility btn-danger {
-  @apply btn bg-bad-fg text-white hover:bg-[#8f2020];
-}
-@utility btn-sm {
-  @apply min-h-8 px-3 py-1 text-[13px];
-}
-@utility icon-btn {
-  @apply inline-flex size-8 items-center justify-center rounded-lg text-ink-2 hover:bg-mute-bg
-    disabled:opacity-50;
-}
-@utility badge {
-  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
-}
-@utility th {
-  @apply border-b border-line bg-mute-bg px-3 py-2 text-left text-[11px] font-bold tracking-wide whitespace-nowrap text-ink-2 uppercase;
-}
-@utility td {
-  @apply border-b border-line px-3 py-2 align-top;
-}
-@utility num {
-  @apply text-right tabular-nums whitespace-nowrap;
+@utility section-title {
+  @apply border-b border-line px-3 py-2.5 text-[13px] font-semibold text-ink;
 }
 
-/* Sidebar hidden before hydration (boot script in app/layout.tsx). */
-@media (min-width: 768px) {
-  html[data-sidebar-hidden] .cts-rail {
-    width: 0;
-    border-color: transparent;
-  }
+/* The sheet tables: sticky header, footer and first columns. */
+.sheet-wrap {
+  overflow: auto;
+  max-height: calc(100dvh - 272px);
+  min-height: 240px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-line);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-2) transparent;
+}
+.sheet {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.sheet th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--color-head);
+  color: var(--color-ink-2);
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.25;
+  padding: 7px 8px;
+  text-align: center;
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line-2);
+}
+.sheet td {
+  height: 28px;
+  background: #fff;
+  border-right: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-hairline);
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.sheet tr.band td {
+  background: #fafbfc;
+}
+.sheet tbody tr:hover td {
+  background: #f1f7f9;
+}
+.sheet td.has-input {
+  padding: 0;
+}
+.sheet td.is-sticky,
+.sheet th.is-sticky {
+  position: sticky;
+  z-index: 2;
+}
+.sheet th.is-sticky {
+  z-index: 4;
+}
+/* The frozen columns end here: a firm line, so the columns sliding under them read clearly. */
+.sheet tr > .is-sticky:nth-child(2) {
+  border-right: 1px solid var(--color-line-2);
+}
+.sheet tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  height: 32px;
+  background: var(--color-head);
+  font-weight: 600;
+  border-top: 1px solid var(--color-line-2);
+  border-bottom: 0;
+  border-right-color: var(--color-line);
+}
+.sheet tfoot td.is-sticky {
+  z-index: 4;
+}
+.sheet tbody td.is-edited,
+.sheet tbody tr.band td.is-edited,
+.sheet tbody tr:hover td.is-edited {
+  background: var(--color-edited);
+}
+
+/* An editable cell: blue text like the workbooks' input cells. */
+.cell {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 27px;
+  background: transparent;
+  color: var(--color-input);
+  border: 0;
+  padding: 0 8px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  transition: background-color 80ms;
+}
+.cell:hover {
+  background: rgb(15 76 92 / 0.06);
+}
+.cell-idle {
+  line-height: 27px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.cell-placeholder {
+  color: var(--color-ink-2);
+}
+.cell:focus {
+  outline: 2px solid var(--color-brand-2);
+  outline-offset: -2px;
+  background: #fff;
+  color: var(--color-ink);
+}
+.cell-text,
+.cell-calc {
+  color: var(--color-ink);
+}
+.cell-confirm {
+  background: #fef7c3;
+}
+.cell-invalid,
+.cell-invalid:hover {
+  background: var(--color-bad-bg);
+  color: var(--color-bad-fg);
+}
+
+/* Label / value tables on Variables, Slab Calculation and Project Summary. */
+.kv {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.kv td,
+.kv th {
+  border-bottom: 1px solid var(--color-line);
+  padding: 6px 12px;
+  height: 34px;
+}
+.kv tbody tr:last-child td {
+  border-bottom: 0;
+}
+.kv th {
+  height: 32px;
+  background: var(--color-head);
+  color: var(--color-ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.kv th.right {
+  text-align: right;
+}
+.kv th.center {
+  text-align: center;
+}
+.kv td.has-input {
+  padding: 0;
+}
+.kv td.value {
+  text-align: right;
+  white-space: nowrap;
+}
+.kv tr.strong td {
+  background: var(--color-info-bg);
+  font-weight: 600;
+}
+.kv .cell {
+  min-height: 33px;
+  padding: 0 12px;
+}
+.kv .cell-idle {
+  line-height: 33px;
 }

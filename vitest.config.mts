@@ -3,10 +3,9 @@ import path from "node:path";
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "src"),
-      "server-only": path.resolve(import.meta.dirname, "tests/stubs/server-only.ts"),
-    },
+    alias: { "@": path.resolve(import.meta.dirname, "src") },
   },
+  // tsconfig leaves JSX for Next.js to compile; the PDF tests need it compiled here.
+  oxc: { jsx: { runtime: "automatic" } },
   test: { include: ["tests/**/*.test.ts"], environment: "node" },
 });

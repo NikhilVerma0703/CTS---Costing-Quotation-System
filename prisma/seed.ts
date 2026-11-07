@@ -1,155 +1,54 @@
 /**
- * Seed: cost item catalog, unit conversion rules, and the reference project
- * (Lennar NWA Brighton Park, Ver 5) exactly as in the uploaded workbooks.
- *
- * Safe to re-run: existing rows are never overwritten, so edits made in the
- * app survive. `npm run db:reset` wipes everything and seeds fresh.
+ * Sets up the stored rate card and loads the three reference workbooks as
+ * projects, through the same importer an upload uses. Safe to re-run: it never
+ * overwrites a saved rate card or a project that already exists, and only fills
+ * customer details that are still blank.
  */
-import { PrismaClient } from "@prisma/client";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { BRIGHTON_PARK, COST_ITEMS, CONVERSION_RULES } from "../src/lib/reference/brighton-park";
-import { STANDARD_FORMULAS } from "../src/lib/reference/standard-formulas";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { importProject } from "../src/lib/import";
+import { DEFAULT_VARIABLES, type ProjectData } from "../src/lib/model";
+import { agreedDetails, fillBlanks } from "../src/lib/quote-details";
 
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
-const SEED_USER = "Seed";
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+
+const REFERENCE = ["Lennar_NWA_Brighton_Park_Quote_Ver5.xlsx", "Project_1633_The_Approach_Quote.xlsx", "Peoria_Gateway_Quote_Ver10.xlsx"];
 
 async function main() {
-  for (const item of COST_ITEMS) {
-    await prisma.costItem.upsert({ where: { code: item.code }, update: {}, create: item });
-  }
-  console.log(`Cost items: ${COST_ITEMS.length}`);
-
-  for (const rule of CONVERSION_RULES) {
-    await prisma.unitConversionRule.upsert({
-      where: {
-        measurementType_fromUnit_toUnit: {
-          measurementType: rule.measurementType,
-          fromUnit: rule.fromUnit,
-          toUnit: rule.toUnit,
-        },
-      },
-      update: {},
-      create: { ...rule, isSystem: true, updatedBy: SEED_USER },
-    });
-  }
-  console.log(`Conversion rules: ${CONVERSION_RULES.length}`);
-
-  // Standard formulas: created once, never overwritten (changes are made in the app, versioned).
-  for (const f of STANDARD_FORMULAS) {
-    await prisma.standardFormula.upsert({ where: { code: f.code }, update: {}, create: { ...f, edgeRule: f.edgeRule ?? null, updatedBy: SEED_USER } });
-  }
-  console.log(`Standard formulas: ${STANDARD_FORMULAS.length}`);
-
-  const bp = BRIGHTON_PARK;
-  const existing = await prisma.project.findUnique({ where: { code: bp.project.code } });
-  if (existing) {
-    console.log(`Reference project ${bp.project.code} already exists — left as is.`);
-    return;
-  }
-
-  const items = await prisma.costItem.findMany();
-  const itemId = (code: string) => items.find((i) => i.code === code)!.id;
-
-  await prisma.$transaction(async (tx) => {
-    const project = await tx.project.create({
-      data: {
-        ...bp.project,
-        createdBy: SEED_USER,
-        slabSpec: { create: { ...bp.slabSpec, updatedBy: SEED_USER } },
-        packing: { create: { ...bp.packing, updatedBy: SEED_USER } },
-        slabInput: {
-          create: {
-            optimizerSlabs: bp.slab.optimizerSlabs,
-            sourceNote: bp.slab.sourceNote,
-            kerfIn: bp.slab.kerfIn,
-            updatedBy: SEED_USER,
-            adjustments: { create: bp.slab.adjustments.map((a, i) => ({ ...a, sortOrder: i })) },
-            drivers: { create: bp.slab.drivers.map((d, i) => ({ ...d, sortOrder: i })) },
-          },
-        },
-        costInputs: {
-          create: bp.rates.map((r) => ({
-            costItemId: itemId(r.code),
-            label: r.label,
-            myCostMode: r.myCostMode,
-            myCost: r.myCost,
-            customerChargeMode: r.customerChargeMode,
-            customerCharge: r.customerCharge,
-            note: r.note,
-            updatedBy: SEED_USER,
-          })),
-        },
-        notes: { create: bp.notes.map((n, i) => ({ ...n, sortOrder: i, createdBy: SEED_USER })) },
-      },
-    });
-
-    const groupNames = [...new Set(bp.pieces.map((p) => p.group))];
-    const groups = new Map<string, string>();
-    for (const name of groupNames) {
-      const g = await tx.drawingGroup.create({ data: { projectId: project.id, name } });
-      groups.set(name, g.id);
-    }
-
-    const batch = await tx.importBatch.create({
-      data: {
-        projectId: project.id,
-        fileName: "2_Drawing_Summary.xlsx",
-        sheetName: "Drawing Summary",
-        mode: "REPLACE",
-        status: "IMPORTED",
-        rowsRead: bp.pieces.length,
-        rowsImported: bp.pieces.length,
-        report: { note: "Seeded from the reference workbook." },
-        createdBy: SEED_USER,
-      },
-    });
-
-    await tx.drawingPiece.createMany({
-      data: bp.pieces.map((p, i) => ({
-        projectId: project.id,
-        groupId: groups.get(p.group)!,
-        importBatchId: batch.id,
-        source: "IMPORT" as const,
-        sortOrder: (i + 1) * 10,
-        dwgNo: p.dwgNo,
-        area: p.area,
-        pieceNo: p.pieceNo,
-        description: p.description,
-        length: p.length,
-        width: p.width,
-        dimUnit: "IN" as const,
-        thickness: p.thickness,
-        color: p.color,
-        sinkModel: p.sinkModel,
-        sinkCuts: p.sinkCuts,
-        faucetHoles: p.faucetHoles,
-        rCorners: p.rCorners,
-        joints: p.joints,
-        unitsQty: p.unitsQty,
-        cuttingRule: "FULL_PERIMETER" as const,
-        depRule: p.depRule,
-        notes: p.notes,
-        createdBy: SEED_USER,
-      })),
-    });
-
-    await tx.auditLog.create({
-      data: {
-        projectId: project.id,
-        entityType: "Project",
-        entityId: project.id,
-        action: "CREATE",
-        summary: `Seeded reference project ${bp.project.code} (${bp.pieces.length} pieces)`,
-        userName: SEED_USER,
-      },
-    });
-    console.log(`Reference project ${bp.project.code}: ${bp.pieces.length} pieces`);
+  await prisma.storedVariables.upsert({
+    where: { id: "default" },
+    create: { id: "default", data: DEFAULT_VARIABLES as unknown as Prisma.InputJsonValue },
+    update: {},
   });
+  console.log("Stored rate card ready.");
+
+  for (const file of REFERENCE) {
+    const buf = readFileSync(path.join(process.cwd(), "reference-sheets", file));
+    const result = await importProject({ drawing: { name: file, data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer } }, { fallback: DEFAULT_VARIABLES });
+    if (!result.data) throw new Error(`${file}: ${result.errors.join("; ")}`);
+    const name = result.data.meta.name;
+    const details = agreedDetails(result.data.meta)?.details ?? {};
+    const existing = await prisma.project.findFirst({ where: { name } });
+    if (existing) {
+      const stored = existing.data as unknown as ProjectData;
+      const meta = fillBlanks(stored.meta, details);
+      if (JSON.stringify(meta) !== JSON.stringify(stored.meta)) {
+        await prisma.project.update({ where: { id: existing.id }, data: { data: { ...stored, meta } as unknown as Prisma.InputJsonValue } });
+        console.log(`Filled in customer details: ${name}`);
+      } else console.log(`Already there: ${name}`);
+      continue;
+    }
+    const meta = fillBlanks(result.data.meta, details);
+    await prisma.project.create({ data: { name, data: { ...result.data, meta, importNotes: [] } as unknown as Prisma.InputJsonValue } });
+    console.log(`Loaded: ${name}`);
+  }
 }
 
 main()
   .catch((e) => {
     console.error(e);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(() => prisma.$disconnect());

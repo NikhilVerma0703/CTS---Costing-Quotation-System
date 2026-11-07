@@ -1,8 +1,8 @@
 {
-  "name": "costing-quotation-system",
-  "version": "0.1.0",
+  "name": "cts-costing-tool",
+  "version": "1.0.0",
   "private": true,
-  "description": "Drawing-based Costing & Quotation system for Pacific Surfaces — drawing summary import, unit conversion, internal costing, customer charges, slab calculation, project summary and customer PDF quote.",
+  "description": "Pacific Surfaces costing tool: upload a Drawing Summary, get Internal Costing, Customer Quote, Quote Summary, Slab Calculation and Project Summary with live recalculation.",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -10,27 +10,21 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
     "db:push": "prisma db push",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
-    "db:studio": "prisma studio",
-    "db:reset": "prisma db push --force-reset && tsx --env-file=.env prisma/seed.ts",
     "setup": "npm install && prisma db push && tsx --env-file=.env prisma/seed.ts"
   },
   "dependencies": {
-    "@hookform/resolvers": "5.9.1",
     "@prisma/adapter-pg": "6.19.3",
     "@prisma/client": "6.19.3",
     "@react-pdf/renderer": "4.3.0",
     "exceljs": "4.4.0",
+    "jszip": "3.10.2",
     "lucide-react": "1.52.0",
     "next": "15.5.27",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-hook-form": "7.89.0",
-    "server-only": "^0.0.1",
-    "sonner": "2.0.8",
-    "zod": "4.6.5"
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.2.0",
@@ -42,7 +36,7 @@
     "eslint-config-next": "15.5.27",
     "prisma": "6.19.3",
     "tailwindcss": "4.3.3",
-    "tsx": "4.19.2",
+    "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.0.3"
   }

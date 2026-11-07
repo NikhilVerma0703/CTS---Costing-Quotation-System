@@ -13,3 +13,6 @@ next-env.d.ts
 # Local database backups
 /db-backups
 /.tmp-inspect
+
+# Local editor and assistant settings
+/.claude
